@@ -141,7 +141,7 @@ def test_pending_outcome_is_not_fabricated():
 
 def test_matured_outcome_uses_24h_future_close():
     candles = [candle(i, close=100) for i in range(40)]
-    candles[26] = candle(26, close=102)
+    candles[25] = candle(25, close=102)
     tool = evaluator()
     result = tool.run(
         points=(point(1),),
