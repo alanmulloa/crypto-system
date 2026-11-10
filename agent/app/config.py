@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_service_role_key: str = ""
 
-    # Reserved for later execution phases. Phase 1 market intelligence never uses them.
+    # Reserved for later execution phases. Market/strategy/portfolio phases never use them.
     binance_api_key: str = ""
     binance_api_secret: str = ""
     binance_testnet: bool = True
@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     market_candidate_limit: int = 10
     market_kline_limit: int = 250
     market_min_candles: int = 120
+
+    # One-way tracker -> agent portfolio synchronization.
+    # Disabled when the token is empty. Never expose this token in the browser.
+    portfolio_sync_token: str = ""
+    portfolio_sync_max_age_minutes: int = 30
+    portfolio_cash_asset: str = "USDC"
 
     # Hard risk controls. Strategy code must not mutate these values.
     max_position_usd: float = 250.0
