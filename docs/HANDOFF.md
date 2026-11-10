@@ -1,79 +1,52 @@
-# HANDOFF - Crypto System after Phase 2A
+# HANDOFF - Crypto System after Phase 2B
 
 ## Current state
 
-Phase 1 Market Intelligence is hardened and Phase 2A adds an independent Strategy Engine. The existing tracker remains preserved.
+Phase 1 Market Intelligence is hardened. Phase 2A implements five independent strategy hypotheses. Phase 2B adds a conflict-aware Strategy Aggregator.
 
-The agent can:
+The system can now:
 
-- scan public Binance Spot market data;
-- analyze closed candles only;
-- classify regime and rank research candidates;
-- evaluate five independent strategy hypotheses:
-  - Trend Following
-  - Pullback
-  - Breakout
-  - Mean Reversion
-  - Momentum
+1. scan Binance public Spot market data;
+2. analyze closed candles only;
+3. classify market regime;
+4. evaluate Trend, Pullback, Breakout, Mean Reversion and Momentum independently;
+5. compare BUY/SELL hypothesis support;
+6. output a research state of WATCH / WAIT / REJECT.
 
-It still cannot aggregate these hypotheses into a trade decision or place orders.
+It still cannot size or execute an order.
 
-## Phase 2A invariants
+## Aggregation invariants
 
-- `ranking_score` is not strategy confidence.
-- Strategies import market contracts only.
-- Strategies do not import Risk Manager or execution modules.
-- Strategy state is only WATCH / WAIT / REJECT.
-- BUY/SELL is a hypothesis direction, not an order.
-- A rejected assessment has no direction.
-- Technical levels are hypothetical research levels derived deterministically from current closed-candle indicators.
+- no blind averaging of opposing strategies;
+- BUY and SELL support are calculated separately;
+- strong opposite-direction support forces WAIT with no preferred direction;
+- WATCH requires at least two independent WATCH assessments agreeing;
+- rejected strategies contribute no directional strength;
+- Phase 1 ranking_score is not used by the aggregator;
+- no portfolio or Risk Manager inputs are used.
 
 ## Important files
 
-- `agent/app/strategies/base.py`
-- `agent/app/strategies/common.py`
-- `agent/app/strategies/trend.py`
-- `agent/app/strategies/pullback.py`
-- `agent/app/strategies/breakout.py`
-- `agent/app/strategies/mean_reversion.py`
-- `agent/app/strategies/momentum.py`
-- `agent/app/strategies/engine.py`
-- `agent/tests/test_strategies.py`
-- `docs/PHASE2A_STRATEGY_ENGINE.md`
+- `agent/app/strategies/aggregator.py`
+- `agent/tests/test_strategy_aggregator.py`
+- `docs/PHASE2B_STRATEGY_AGGREGATOR.md`
 
 ## Security invariants
 
-Do not weaken:
+Unchanged:
 
 - Spot only;
-- no real trading;
-- no private Binance endpoints;
+- no private Binance trading APIs;
 - no Futures/Margin/leverage;
 - no withdrawals;
-- no broker calls from strategy code;
-- hard risk limits remain outside strategy control;
-- Supabase service role backend-only;
-- RLS remains enabled.
+- no real trading;
+- no strategy or aggregator may import execution;
+- hard risk limits stay outside strategy control.
 
-## Open technical debt
+## Next task - Phase 2C
 
-From Phase 1:
+Implement a historical sanity runner before Phase 3.
 
-- market observation idempotency/retention;
-- order-book spread/depth;
-- cache/request-budget monitoring;
-- metadata-driven asset exclusions;
-- regime threshold historical validation.
+It must feed strategies only information available at each historical timestamp and verify deterministic behavior/state transitions. It should not optimize thresholds yet and must not perform order execution.
 
-From Phase 2A:
-
-- heuristic strategy thresholds require historical validation;
-- technical entry/stop/target levels are generic ATR-based hypotheses;
-- strategies currently consume indicator snapshots, not raw candle patterns;
-- no conflict aggregator yet.
-
-## Next task - Phase 2B
-
-Build a Strategy Aggregator that consumes the five assessments and emits a single research state of WATCH / WAIT / REJECT with explicit conflict/evidence handling. It must not call Risk Manager or execution.
-
-Then implement Phase 2C historical sanity checks before integrating portfolio/risk.
+After 2C, Phase 3 can integrate the existing tracker portfolio and hard Risk Manager.

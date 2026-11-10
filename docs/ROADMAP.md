@@ -21,10 +21,9 @@
 - EMA / RSI / ATR / volume ratio / market structure
 - bullish / bearish / ranging / high-volatility regimes
 - multi-timeframe research-candidate ranking
-- optional Supabase persistence without credentials required for tests
+- optional Supabase persistence
 - closed-candle filtering and retry/backoff
-- mocked integration coverage
-- no buy/sell execution signals
+- no execution signals
 
 ## Phase 2 - Strategies
 
@@ -39,21 +38,23 @@
 - normalized scores, confidence and reasons
 - hypothetical technical levels
 - WATCH / WAIT / REJECT only
-- no broker/risk dependency
 
-### Phase 2B - Strategy Aggregator
+### Phase 2B - Strategy Aggregator ✅
 
 - compare independent assessments
-- resolve directional conflicts
-- preserve per-strategy evidence
+- separate BUY and SELL evidence
+- explicit conflict ratio
+- preserve supporting/conflicting/rejected strategy evidence
 - global WATCH / WAIT / REJECT
-- no execution
+- unresolved directional conflict returns WAIT with no direction
+- no Risk Manager or execution
 
 ### Phase 2C - Historical sanity
 
 - historical runner
 - strict no-look-ahead
 - per-strategy diagnostics
+- aggregate state transitions
 - initial out-of-sample scaffolding
 
 ## Phase 3 - Portfolio + Risk
