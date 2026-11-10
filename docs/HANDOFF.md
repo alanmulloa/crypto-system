@@ -1,4 +1,4 @@
-# HANDOFF - Crypto System after Phase 5D tooling
+# HANDOFF - Crypto System after Phase 5F tooling
 
 ## Current state
 
@@ -7,37 +7,78 @@ Phases 1-4 are complete.
 Phase 5 includes:
 
 - 5A outcome labels;
-- 5B Spot-only backtest;
+- 5B Spot-only deterministic backtest;
 - 5C chronological validation;
-- 5D real Binance public-history evidence runner.
+- 5D real Binance public-history evidence runner;
+- 5E evidence review;
+- 5F strategy diagnostics and exit research tooling.
 
-## New CLI
+## Evidence conclusion before 5F
+
+The 730-day run across BTCUSDT, ETHUSDT, BNBUSDT, SOLUSDT and XRPUSDT showed
+negative aggregate OOS backtest results for all five current strategies.
+
+Mean Reversion remains the main research lead because WATCH outcomes showed a positive
+directional signal while realized backtest mechanics remained negative.
+
+This is a research hypothesis, not an approved strategy.
+
+## Phase 5F CLI
 
 From `agent/`:
 
-`python -m app.evaluation.evidence_cli`
+```bash
+python -m app.evaluation.diagnostics_cli \
+  --days 730 \
+  --symbols BTCUSDT ETHUSDT BNBUSDT SOLUSDT XRPUSDT \
+  --strategy mean_reversion \
+  --max-points 8000 \
+  --output reports/phase5f-mean-reversion.json
+```
 
-Default:
+Defaults:
 
-- BTCUSDT / ETHUSDT / BNBUSDT / SOLUSDT / XRPUSDT;
-- 730 days;
-- 8000 hourly evaluation points per symbol;
-- output under `reports/`.
+- public Binance Spot market data only;
+- fee 10 bps;
+- slippage 5 bps;
+- 24h current-exit horizon;
+- 48h research path;
+- up to 25 individual path examples per segment in JSON.
 
-## Important parity fix
+## Methodological boundary
 
-Historical indicators now default to the same 250-candle depth as the live scanner instead of consuming the entire prior history.
+The previous OOS segment has already been observed.
 
-This keeps research closer to production behavior and improves runtime.
+Do not tune against it and then label it OOS again.
 
-## No credentials
+ATR sensitivity rows on OOS are descriptive and carry
+`research_eligible=false`.
 
-5D uses only public Binance klines.
+Any selected experimental configuration must later be tested on genuinely unseen
+future data or prospectively.
 
-There is still no private exchange client or Testnet execution.
+## Strategy integrity
+
+Phase 5F does not modify the generation rules in
+`agent/app/strategies/mean_reversion.py` or any other strategy.
+
+It adds diagnostics only.
+
+## Security boundary
+
+Still absent:
+
+- private exchange credentials;
+- Binance Spot Testnet execution;
+- real execution;
+- Futures;
+- Margin;
+- leverage;
+- withdrawals.
 
 ## Next task
 
-Run the evidence CLI against real public history, inspect the generated JSON and produce a Phase 5E evidence review.
+Run Phase 5F on the same 730-day public dataset, inspect the JSON, and decide whether
+there is enough evidence to define one narrow Phase 5G experimental variant.
 
-Do not start Phase 6 merely because the tooling is complete.
+Do not start Phase 6 from the Phase 5F tooling alone.

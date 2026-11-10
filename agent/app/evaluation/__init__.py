@@ -5,6 +5,11 @@ from app.evaluation.backtest import (
     BacktestSimulator,
     BacktestTrade,
 )
+from app.evaluation.diagnostics import (
+    DiagnosticConfig,
+    DiagnosticsReport,
+    StrategyDiagnostics,
+)
 from app.evaluation.historical import HistoricalPoint, HistoricalSanityRunner
 from app.evaluation.metrics import HistoricalSanityReport, StrategyStateCounts, summarize
 from app.evaluation.outcome_metrics import OutcomeSummary, summarize_outcomes
@@ -33,6 +38,8 @@ __all__ = [
     "BacktestSimulator",
     "BacktestTrade",
     "DEFAULT_HORIZONS_MS",
+    "DiagnosticConfig",
+    "DiagnosticsReport",
     "HistoricalPoint",
     "HistoricalSanityReport",
     "HistoricalSanityRunner",
@@ -44,6 +51,7 @@ __all__ = [
     "ScoreThresholdSensitivity",
     "SegmentValidation",
     "StrategyStateCounts",
+    "StrategyDiagnostics",
     "StrategyValidationReport",
     "TemporalSplitConfig",
     "TemporalValidator",

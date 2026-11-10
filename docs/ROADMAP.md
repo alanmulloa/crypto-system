@@ -23,15 +23,28 @@
 - JSON evidence artifact
 - no credentials or execution
 
-### Phase 5E - Evidence review
-- execute 5D on real public history
-- review sample size and OOS stability
-- compare strategies across assets/regimes
-- decide whether strategies require revision
-- prospective Paper observation
+### Phase 5E - Evidence review ✅
+- real 730-day evidence reviewed
+- all five current strategy backtests negative in aggregate OOS
+- mean_reversion WATCH outcomes identified as the primary research lead
+- no approval for Testnet
+
+### Phase 5F - Strategy diagnostics & exit research
+- path-level MFE / MAE and timing
+- current-exit diagnostics
+- fixed-horizon comparison
+- predetermined ATR stop/target sensitivity
+- symbol / regime / temporal-segment breakdowns
+- observed OOS treated as descriptive only
+- no strategy rule changes
+- no Testnet or execution
+
+### Phase 5G - Experimental variant (only if justified)
+- define one narrow research variant from calibration/validation evidence
+- validate on genuinely unseen future data or prospective paper observations
 
 ## Phase 6 - Binance Spot Testnet
-- only after evidence review
+- only after new unseen evidence supports progression
 - signed API
 - exchange filters
 - reconciliation
