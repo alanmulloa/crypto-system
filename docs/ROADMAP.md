@@ -9,22 +9,22 @@
 ## Phase 5 - Backtesting + Evaluation
 
 ### Phase 5A - Outcome Evaluation ✅
-- future labels at 4h / 12h / 24h / 3d
-- raw return / max-up / max-down
-- direction-aware return / MFE / MAE
-- aggregate + per-strategy observations
-- WAIT/REJECT outcome tracking
-- regime/state/strategy filters
-- no-look-ahead separation
-- no trade simulation
+- future outcome labels
+- MFE / MAE
+- WATCH/WAIT/REJECT diagnostics
 
-### Phase 5B - Backtest simulator
-- entry/exit rules
-- fees/slippage
-- stops/targets
-- position sizing
-- realized PnL
-- expectancy/profit factor/drawdown
+### Phase 5B - Deterministic Spot Backtest ✅
+- WATCH-only entries
+- next-candle execution
+- entry-range validation
+- strategy stop / TP1 / horizon exit
+- conservative stop-first ambiguity
+- fees / slippage
+- fixed notional
+- Spot-only SELL skip by default
+- expectancy / profit factor / win rate
+- closed-equity drawdown
+- per-strategy independent reports
 
 ### Phase 5C - Validation
 - calibration / validation / out-of-sample

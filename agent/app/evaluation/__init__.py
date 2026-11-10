@@ -1,3 +1,10 @@
+from app.evaluation.backtest import (
+    BacktestConfig,
+    BacktestExitReason,
+    BacktestReport,
+    BacktestSimulator,
+    BacktestTrade,
+)
 from app.evaluation.historical import HistoricalPoint, HistoricalSanityRunner
 from app.evaluation.metrics import HistoricalSanityReport, StrategyStateCounts, summarize
 from app.evaluation.outcome_metrics import OutcomeSummary, summarize_outcomes
@@ -9,6 +16,11 @@ from app.evaluation.outcomes import (
 )
 
 __all__ = [
+    "BacktestConfig",
+    "BacktestExitReason",
+    "BacktestReport",
+    "BacktestSimulator",
+    "BacktestTrade",
     "DEFAULT_HORIZONS_MS",
     "HistoricalPoint",
     "HistoricalSanityReport",

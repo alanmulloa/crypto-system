@@ -1,47 +1,47 @@
-# HANDOFF - Crypto System after Phase 5A
+# HANDOFF - Crypto System after Phase 5B
 
 ## Current state
 
-Phases 1-4 are implemented. Phase 5A adds future-outcome labeling for historical research observations.
+Phases 1-4 are complete. Phase 5A labels future outcomes. Phase 5B adds a deterministic Spot-only backtest simulator for each independent strategy.
 
-## What 5A measures
+## Backtest execution rules
 
-For every historical point:
+- WATCH only;
+- next 1h candle after signal;
+- optional entry range validation;
+- fixed USD notional;
+- Paper Broker fee/slippage assumptions;
+- stop / TP1 / horizon;
+- stop wins same-candle ambiguity;
+- no overlapping trade for the same strategy;
+- SELL hypotheses skipped by default (no shorts).
 
-- aggregate assessment outcome;
-- each strategy assessment outcome;
-- 4h / 12h / 24h / 3d future path when available;
-- raw return;
-- max upside/downside;
-- direction-aware return/MFE/MAE for BUY/SELL.
+## Metrics
 
-WAIT/REJECT without direction still keep raw future market movement.
+Each strategy report contains:
 
-## What 5A does not do
+- trade count;
+- gross profit/loss;
+- net PnL;
+- expectancy;
+- profit factor;
+- win rate;
+- closed-equity max drawdown;
+- skipped-signal diagnostics.
 
-It does not claim trading profitability.
+## Important interpretation
 
-There is no:
+These results are not yet evidence for Testnet.
 
-- position sizing;
-- entry fill simulation;
-- stop/TP execution;
-- fee-adjusted PnL;
-- equity curve;
-- drawdown.
+The same data can still bias threshold choices.
 
-Those belong to Phase 5B.
+## Next task - Phase 5C
 
-## No-look-ahead
+Split history into calibration / validation / out-of-sample periods and compare performance stability across:
 
-HistoricalPoint remains the signal-time boundary. OutcomeEvaluator only labels candles strictly after that timestamp.
+- strategies;
+- market regimes;
+- horizons/timeframes;
+- accepted vs rejected opportunities.
 
-## Persistence
-
-Migration 007 introduces `outcome_observations` for immutable research labels.
-
-## Next task - Phase 5B
-
-Implement a backtest simulator using the same deterministic fee/slippage assumptions as Paper Broker, then calculate trade/equity metrics.
-
-Keep calibration and out-of-sample validation separate; do not optimize on the full dataset.
+Only after that should the project discuss Binance Spot Testnet credentials.
