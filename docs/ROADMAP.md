@@ -11,60 +11,49 @@
 
 ## Phase 1 - Market Intelligence ✅
 
-- Binance public `exchangeInfo`
-- public 24h tickers
-- public klines
-- 15m / 1h / 4h / 1d
-- SPOT/TRADING/USDT filtering
-- stablecoin, leveraged-token and wrapped-duplicate exclusions
-- liquidity, volume and minimum-history filtering
-- EMA / RSI / ATR / volume ratio / market structure
-- bullish / bearish / ranging / high-volatility regimes
-- multi-timeframe research-candidate ranking
-- optional Supabase persistence
-- closed-candle filtering and retry/backoff
-- no execution signals
+- public Binance Spot market data
+- closed 15m / 1h / 4h / 1d candles
+- universe/liquidity filters
+- EMA / RSI / ATR / volume / structure
+- market regime
+- candidate ranking
+- retry/backoff and partial-failure tolerance
+- no execution
 
-## Phase 2 - Strategies
+## Phase 2 - Strategies ✅
 
 ### Phase 2A - Independent Strategy Engine ✅
-
-- standard strategy contract
 - trend following
 - pullback
 - breakout
 - mean reversion
 - momentum
-- normalized scores, confidence and reasons
-- hypothetical technical levels
-- WATCH / WAIT / REJECT only
+- normalized WATCH / WAIT / REJECT assessments
 
 ### Phase 2B - Strategy Aggregator ✅
-
-- compare independent assessments
 - separate BUY and SELL evidence
-- explicit conflict ratio
-- preserve supporting/conflicting/rejected strategy evidence
+- explicit conflicts
 - global WATCH / WAIT / REJECT
-- unresolved directional conflict returns WAIT with no direction
-- no Risk Manager or execution
+- no execution
 
-### Phase 2C - Historical sanity
-
-- historical runner
-- strict no-look-ahead
-- per-strategy diagnostics
-- aggregate state transitions
-- initial out-of-sample scaffolding
+### Phase 2C - Historical sanity ✅
+- walk-forward historical runner
+- per-timestamp timeframe truncation
+- strict no-look-ahead regression
+- deterministic output regression
+- strategy/aggregate state diagnostics
+- no profitability optimization
 
 ## Phase 3 - Portfolio + Risk
 
 - consume current tracker portfolio
-- capital states (`SOLO GANANCIAS`, capital pending, pool/staking)
-- allocation and exposure
+- map current custody and capital states
+- allocation/exposure
 - correlation/sector exposure
 - position sizing
+- max daily allocation/loss
 - hard limits independent of strategy
+- research decision -> risk decision contract
 
 ## Phase 4 - Paper Trading
 
@@ -78,29 +67,29 @@
 
 ## Phase 5 - Backtesting + Evaluation
 
-- no look-ahead
+- PnL/expectancy/profit factor/drawdown
 - train/calibration vs validation vs out-of-sample
 - rejected-signal evaluation
-- strategy metrics by asset/regime/timeframe
-- forecast calibration
+- metrics by asset/regime/timeframe
+- strategy calibration
 
 ## Phase 6 - Binance Spot Testnet
 
 - signed API
-- exchange filters (tick/step/min-notional)
-- idempotency keys
+- exchange filters
+- idempotency
 - reconciliation
-- explicit manual approval mode
+- manual approval mode
 
 ## Phase 7 - External Signals
 
-- adapters for external/copy signals
+- external/copy adapters
 - independent validation
 - never blind-copy
 
 ## Phase 8 - Dashboard Integration
 
-- expose agent state to existing dashboard
+- expose agent state to current dashboard
 - migrate tracker reads to Supabase incrementally
 - preserve historical reconstruction
 

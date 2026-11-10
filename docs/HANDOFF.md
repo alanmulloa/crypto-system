@@ -1,52 +1,63 @@
-# HANDOFF - Crypto System after Phase 2B
+# HANDOFF - Crypto System after Phase 2C
 
 ## Current state
 
-Phase 1 Market Intelligence is hardened. Phase 2A implements five independent strategy hypotheses. Phase 2B adds a conflict-aware Strategy Aggregator.
+Phase 1 Market Intelligence is hardened. Phase 2A has five independent strategy hypotheses. Phase 2B aggregates them with explicit conflict handling. Phase 2C adds a deterministic walk-forward historical sanity runner.
 
-The system can now:
+The system still cannot execute trades or simulate a portfolio.
 
-1. scan Binance public Spot market data;
-2. analyze closed candles only;
-3. classify market regime;
-4. evaluate Trend, Pullback, Breakout, Mean Reversion and Momentum independently;
-5. compare BUY/SELL hypothesis support;
-6. output a research state of WATCH / WAIT / REJECT.
+## Historical safety invariant
 
-It still cannot size or execute an order.
+At historical timestamp T, the strategy layer only receives candles with:
 
-## Aggregation invariants
+`close_time_ms <= T`
 
-- no blind averaging of opposing strategies;
-- BUY and SELL support are calculated separately;
-- strong opposite-direction support forces WAIT with no preferred direction;
-- WATCH requires at least two independent WATCH assessments agreeing;
-- rejected strategies contribute no directional strength;
-- Phase 1 ranking_score is not used by the aggregator;
-- no portfolio or Risk Manager inputs are used.
+A regression test mutates future candles and proves that the candidate, all strategy assessments and aggregate output at the prior timestamp remain identical.
 
-## Important files
+Do not weaken this invariant.
 
-- `agent/app/strategies/aggregator.py`
-- `agent/tests/test_strategy_aggregator.py`
-- `docs/PHASE2B_STRATEGY_AGGREGATOR.md`
+## New files
+
+- `agent/app/evaluation/historical.py`
+- `agent/app/evaluation/metrics.py`
+- `agent/tests/test_historical_sanity.py`
+- `docs/PHASE2C_HISTORICAL_SANITY.md`
+
+## Diagnostics
+
+The historical runner can report:
+
+- aggregate WATCH / WAIT / REJECT frequency;
+- unresolved BUY/SELL conflicts;
+- per-strategy WATCH / WAIT / REJECT frequency.
+
+It is not yet a profitability backtester.
 
 ## Security invariants
 
 Unchanged:
 
 - Spot only;
-- no private Binance trading APIs;
+- no real trading;
+- no Binance private trading API;
 - no Futures/Margin/leverage;
 - no withdrawals;
-- no real trading;
-- no strategy or aggregator may import execution;
-- hard risk limits stay outside strategy control.
+- strategy/evaluation code cannot create orders;
+- Risk Manager remains outside strategies;
+- hard risk limits remain operator-controlled.
 
-## Next task - Phase 2C
+## Next task - Phase 3
 
-Implement a historical sanity runner before Phase 3.
+Integrate the existing tracker portfolio into the agent through an explicit portfolio contract.
 
-It must feed strategies only information available at each historical timestamp and verify deterministic behavior/state transitions. It should not optimize thresholds yet and must not perform order execution.
+Phase 3 should:
 
-After 2C, Phase 3 can integrate the existing tracker portfolio and hard Risk Manager.
+1. represent holdings and custody;
+2. preserve capital states such as SOLO GANANCIAS / capital pending / pool-staking;
+3. calculate total exposure and available cash;
+4. add portfolio-aware position sizing;
+5. enforce hard risk limits;
+6. combine aggregate research output with a separate RiskDecision;
+7. still avoid real execution.
+
+Before later Paper Trading, also resolve Phase 1 debt around observation idempotency/retention and execution-quality liquidity filters.
