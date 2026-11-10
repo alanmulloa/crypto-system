@@ -1,4 +1,4 @@
-# HANDOFF - Crypto System after Phase 5F evidence review
+# HANDOFF - Crypto System after Phase 5F.1 tooling
 
 ## Current state
 
@@ -12,7 +12,8 @@ Phase 5 includes:
 - 5D real Binance public-history evidence runner;
 - 5E evidence review;
 - 5F strategy diagnostics and exit research tooling;
-- 5F evidence review completed.
+- 5F evidence review;
+- 5F.1 Mean Reversion entry-quality diagnostics tooling.
 
 ## Phase 5F conclusion
 
@@ -28,45 +29,56 @@ Across all five symbols, pooled net expectancy per $100 research observation was
 - observed OOS 24h: -0.178 USD;
 - observed OOS 48h: -0.434 USD.
 
-The validation improvement at longer horizons is not present in calibration and does not
-persist in the already-observed OOS period.
+ATR sensitivity also failed to identify a stable positive calibration/validation
+configuration.
 
-ATR sensitivity also fails to identify a stable positive configuration:
+## Phase 5F.1 tooling
 
-- best pooled calibration: stop 1.0 ATR / target 0.75 ATR, -0.320 USD;
-- best pooled validation: stop 2.0 ATR / target 2.0 ATR, -0.042 USD.
+The entry-quality analyzer uses only information available at signal time.
 
-Many stopped paths later recover, but changing the exit alone does not solve the
-negative calibration evidence.
+It reports predetermined buckets for:
 
-## Decision
+- score and confidence;
+- 1h RSI, ATR%, volume ratio and EMA distance;
+- 1h EMA20/EMA50 spread;
+- 15m RSI / EMA distance;
+- 4h RSI / EMA distance;
+- count of tracked timeframes below EMA20;
+- 1h / 4h market structure;
+- symbol;
+- time since the previous Mean Reversion WATCH BUY;
+- WATCH BUY count in the previous six hours.
 
-Phase 5G is deferred.
+Future candles are labels only.
 
-The next task is Phase 5F.1: diagnose Mean Reversion **entry quality** using only
-information available at signal time.
+Cross-segment candidate flags use calibration + validation only. The already-observed
+OOS segment is descriptive and cannot influence candidate selection.
 
-Do not select an entry feature using future path information.
+## Run Phase 5F.1
 
-Candidate research dimensions:
+From `agent/`:
 
-- score / confidence;
-- normalized volatility;
-- oversold depth / distance from mean;
-- momentum / slope;
-- multi-timeframe alignment;
-- symbol-specific behavior;
-- consecutive-signal clustering / cooldown.
+```bash
+python -m app.evaluation.entry_quality_cli \
+  --days 730 \
+  --symbols BTCUSDT ETHUSDT BNBUSDT SOLUSDT XRPUSDT \
+  --max-points 8000 \
+  --outcome-hours 24 \
+  --min-bucket-observations 20 \
+  --output reports/phase5f1-mean-reversion.json
+```
 
-## Methodological boundary
+The JSON contains per-symbol reports and a pooled five-symbol report.
 
-The previous OOS segment has already been observed.
+## Promotion boundary
 
-It remains descriptive only and cannot become a fresh OOS test after parameter
-selection.
+Do not create Phase 5G merely because one bucket is positive.
 
-Any eventual Phase 5G candidate must be selected from calibration + validation and then
-tested on genuinely unseen future data or prospectively.
+A candidate entry rule should have useful sample size and consistent
+calibration/validation evidence, preferably across multiple symbols.
+
+Any selected Phase 5G variant must then be tested on genuinely unseen future data or
+prospectively before Phase 6 can be considered.
 
 ## Security boundary
 
@@ -82,6 +94,6 @@ Still absent:
 
 ## Next task
 
-Implement Phase 5F.1 entry-quality diagnostics for Mean Reversion.
+Run Phase 5F.1 on the same 730-day public dataset and review the JSON.
 
 Do not start Phase 6.

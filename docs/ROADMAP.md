@@ -41,17 +41,19 @@
 - review conclusion: no stable exit-only variant justified
 - Phase 5G deferred pending entry-quality evidence
 
-### Phase 5F.1 - Mean Reversion entry-quality diagnostics
-- inspect only features available at signal time
-- score / confidence bands
-- normalized volatility context
-- oversold depth / distance from mean
-- momentum and slope context
-- multi-timeframe alignment
-- symbol behavior
-- repeated-signal clustering and cooldown candidates
-- calibration + validation only for candidate selection
+### Phase 5F.1 - Mean Reversion entry-quality diagnostics ✅
+- signal-time features only
+- fixed score / confidence bands
+- 1h RSI, ATR%, volume and EMA-distance context
+- 15m and 4h alignment context
+- 1h EMA20/EMA50 spread
+- symbol and market-structure breakdowns
+- repeated WATCH BUY clustering / cooldown evidence
+- per-symbol and pooled five-symbol reports
+- calibration + validation only for candidate screening
 - previously observed OOS remains descriptive only
+- no automatic strategy rule changes
+- next step: run 730-day evidence and review candidate buckets
 
 ### Phase 5G - Experimental variant (deferred)
 - define one narrow research variant only if 5F.1 supports it
