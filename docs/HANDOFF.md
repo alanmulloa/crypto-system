@@ -1,37 +1,47 @@
-# HANDOFF - Crypto System after Phase 4C
+# HANDOFF - Crypto System after Phase 5A
 
 ## Current state
 
-Phases 1-4 are implemented.
+Phases 1-4 are implemented. Phase 5A adds future-outcome labeling for historical research observations.
 
-The system now contains an end-to-end paper-only cycle from public market candidates through strategies, aggregation, portfolio-aware risk and the deterministic Paper Broker.
+## What 5A measures
 
-## Disabled by default
+For every historical point:
 
-`PAPER_LOOP_ENABLED=false`
+- aggregate assessment outcome;
+- each strategy assessment outcome;
+- 4h / 12h / 24h / 3d future path when available;
+- raw return;
+- max upside/downside;
+- direction-aware return/MFE/MAE for BUY/SELL.
 
-A code deploy does not start trading or paper cycles automatically.
+WAIT/REJECT without direction still keep raw future market movement.
 
-There is no scheduler/daemon in Phase 4C.
+## What 5A does not do
 
-## Hard boundaries
+It does not claim trading profitability.
 
-- public market data only;
-- no private Binance APIs;
-- no Futures/Margin/leverage;
-- no withdrawals;
-- no real trading;
-- paper BUYs require approved PortfolioRiskDecision;
-- kill switch is downstream of strategy output;
-- daily realized paper loss is fed into the next risk check;
-- repeat cycle ids are idempotent.
+There is no:
 
-## Exposure feedback
+- position sizing;
+- entry fill simulation;
+- stop/TP execution;
+- fee-adjusted PnL;
+- equity curve;
+- drawdown.
 
-Paper positions are overlaid onto the tracker portfolio context before each risk decision, so simulated purchases affect subsequent max-weight/open-position/cash checks.
+Those belong to Phase 5B.
 
-## Next task - Phase 5
+## No-look-ahead
 
-Build evaluation around paper/historical outcomes before introducing any Testnet credentials.
+HistoricalPoint remains the signal-time boundary. OutcomeEvaluator only labels candles strictly after that timestamp.
 
-Do not move to Testnet merely because paper execution works mechanically. Require measurable evidence and out-of-sample checks first.
+## Persistence
+
+Migration 007 introduces `outcome_observations` for immutable research labels.
+
+## Next task - Phase 5B
+
+Implement a backtest simulator using the same deterministic fee/slippage assumptions as Paper Broker, then calculate trade/equity metrics.
+
+Keep calibration and out-of-sample validation separate; do not optimize on the full dataset.
