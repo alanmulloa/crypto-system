@@ -1,73 +1,54 @@
-# HANDOFF - Crypto System after Phase 3B
+# HANDOFF - Crypto System after Phase 3C
 
 ## Current state
 
-Market Intelligence, strategies, aggregation, no-look-ahead historical sanity, portfolio contracts and hard risk are implemented.
+Phases 1 and 2 are complete. Phase 3 now includes:
 
-Phase 3B now provides a one-way, idempotent tracker synchronization path.
+- portfolio contract;
+- hard portfolio-aware risk;
+- one-way tracker synchronization;
+- custody/liquidity exposure diagnostics;
+- real daily-buy usage from the tracker operation journal.
 
-## Data authority
+The tracker remains authoritative for portfolio state.
 
-For now:
+## Important safety change
 
-**Crypto Tracker remains authoritative for portfolio state.**
+The bridge no longer claims daily realized PnL is zero.
 
-Flow:
+The current operation journal cannot calculate realized PnL rigorously, so:
 
-`Tracker -> /portfolio/sync -> PortfolioSyncService -> Supabase portfolio_syncs`
+`daily_realized_pnl_usd = null`
 
-There is deliberately no reverse flow.
+The Risk Manager blocks new BUY approvals while this value is unavailable.
 
-## Sync safety
+This prevents an unknown daily-loss state from silently bypassing the loss limit.
 
-- versioned payload;
-- server-calculated SHA-256;
-- duplicate suppression;
-- stale snapshot rejection;
-- future-clock rejection;
-- freshness window;
-- append-only Supabase journal;
-- RLS;
-- bearer token stored outside Git.
+## Exposure diagnostics
+
+`analyze_exposure()` reports:
+
+- exact single-source custody exposure;
+- multi-source unattributed value;
+- unknown custody value;
+- known liquid value;
+- explicit/inferred illiquid value;
+- unknown liquidity value.
+
+Multi-source positions are not divided equally.
 
 ## Tracker bridge
 
-Source file:
+`dailyBuyUsedUsdV48_()` now calculates today's executed purchases from `Operaciones ejecutadas`.
 
-`tracker/apps-script/crypto_tracker_v4_7_1_full/PortfolioBridge.gs`
+## Next task
 
-Preview:
-
-`previewPortfolioSyncV48()`
-
-Push:
-
-`pushPortfolioSnapshotV48()`
-
-Script Properties required:
-
-- CRYPTO_AGENT_SYNC_URL
-- CRYPTO_AGENT_SYNC_TOKEN
-
-Do not put the token in source code.
-
-## Important limitation before Paper Trading
-
-The first bridge exports:
-
-- daily_buy_used_usd = 0
-- daily_realized_pnl_usd = 0
-
-These counters must be derived from Operaciones ejecutadas before relying on daily buy/loss enforcement in a live paper loop.
-
-## Next task - Phase 3C
-
-Add custody concentration and liquidity/staking/pool flags, then derive daily risk counters from the tracker operation journal.
+Phase 4 should introduce the Paper Broker and, as part of its fill/trade journal, create an auditable realized-PnL ledger. Only then should the daily loss guard be considered complete for automated paper execution.
 
 Still prohibited:
 
-- real orders;
-- private Binance trading endpoints;
+- real trading;
+- Binance private trading API;
 - Futures/Margin/leverage;
 - withdrawals;
-- agent write-back into tracker portfolio data.
+- agent write-back to tracker.

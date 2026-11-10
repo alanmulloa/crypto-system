@@ -5,8 +5,8 @@
  * The agent has no code path here to update Cartera/Asignacion/Conciliacion.
  *
  * Script Properties required to push:
- *   CRYPTO_AGENT_SYNC_URL   e.g. https://agent.example.com/portfolio/sync
- *   CRYPTO_AGENT_SYNC_TOKEN strong random bearer token
+ *   CRYPTO_AGENT_SYNC_URL
+ *   CRYPTO_AGENT_SYNC_TOKEN
  */
 
 const CT_PORTFOLIO_SYNC_SCHEMA = '1.0';
@@ -30,8 +30,32 @@ function portfolioRowsAsObjectsV48_(sheetName) {
   }).filter(row => String(row['Activo'] || '').trim() !== '');
 }
 
+function dailyBuyUsedUsdV48_() {
+  const sh = SpreadsheetApp.getActive().getSheetByName('Operaciones ejecutadas');
+  if (!sh || sh.getLastRow() < 2) return 0;
+
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
+  const rows = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getValues();
+  const idx = name => headers.indexOf(name);
+  const dateIdx = idx('Fecha ejecución');
+  const typeIdx = idx('Tipo');
+  const usdIdx = idx('Ejecutado USD');
+  if (dateIdx < 0 || typeIdx < 0 || usdIdx < 0) return 0;
+
+  const tz = Session.getScriptTimeZone();
+  const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+
+  return rows.reduce((sum, row) => {
+    const date = row[dateIdx];
+    if (!(date instanceof Date)) return sum;
+    const day = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
+    const type = String(row[typeIdx] || '').trim().toUpperCase();
+    const usd = Number(row[usdIdx]) || 0;
+    return day === today && type === 'COMPRA' ? sum + Math.max(usd, 0) : sum;
+  }, 0);
+}
+
 function buildPortfolioSyncPayloadV48_() {
-  const ss = SpreadsheetApp.getActive();
   return {
     schema_version: CT_PORTFOLIO_SYNC_SCHEMA,
     source_id: 'crypto_tracker',
@@ -42,8 +66,11 @@ function buildPortfolioSyncPayloadV48_() {
     cartera_rows: portfolioRowsAsObjectsV48_('Cartera'),
     allocation_rows: portfolioRowsAsObjectsV48_('Asignación'),
     reconciliation_rows: portfolioRowsAsObjectsV48_('Conciliación histórica'),
-    daily_buy_used_usd: 0,
-    daily_realized_pnl_usd: 0
+    daily_buy_used_usd: dailyBuyUsedUsdV48_(),
+
+    // Deliberately unknown. The current v4.7 operation journal does not preserve
+    // enough realized-cost-basis detail to calculate daily realized PnL safely.
+    daily_realized_pnl_usd: null
   };
 }
 

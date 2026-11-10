@@ -13,6 +13,14 @@ class CapitalState(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 
+class LiquidityState(str, Enum):
+    LIQUID = "LIQUID"
+    STAKED = "STAKED"
+    POOLED = "POOLED"
+    LOCKED = "LOCKED"
+    UNKNOWN = "UNKNOWN"
+
+
 @dataclass(frozen=True)
 class PortfolioPosition:
     asset: str
@@ -23,6 +31,8 @@ class PortfolioPosition:
     capital_state: CapitalState = CapitalState.UNKNOWN
     custody_sources: tuple[str, ...] = field(default_factory=tuple)
     position_type: str | None = None
+    liquidity_state: LiquidityState = LiquidityState.UNKNOWN
+    liquidity_basis: str | None = None
 
     def __post_init__(self) -> None:
         if self.quantity < 0:
@@ -58,7 +68,7 @@ class PortfolioSnapshot:
     allocations: tuple[AllocationTarget, ...] = field(default_factory=tuple)
     cash_asset: str = "USDC"
     daily_buy_used_usd: float = 0.0
-    daily_realized_pnl_usd: float = 0.0
+    daily_realized_pnl_usd: float | None = None
 
     def __post_init__(self) -> None:
         if self.daily_buy_used_usd < 0:
@@ -85,6 +95,10 @@ class PortfolioSnapshot:
             for position in self.positions
             if position.asset.upper() != cash
         )
+
+    @property
+    def daily_loss_guard_available(self) -> bool:
+        return self.daily_realized_pnl_usd is not None
 
     def position_for(self, asset: str) -> PortfolioPosition | None:
         needle = asset.upper()

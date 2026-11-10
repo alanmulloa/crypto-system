@@ -22,7 +22,7 @@ class TrackerPortfolioExport(BaseModel):
     allocation_rows: list[dict[str, object]] = Field(default_factory=list)
     reconciliation_rows: list[dict[str, object]] = Field(default_factory=list)
     daily_buy_used_usd: float = 0.0
-    daily_realized_pnl_usd: float = 0.0
+    daily_realized_pnl_usd: float | None = None
 
     def canonical_json(self) -> str:
         return json.dumps(

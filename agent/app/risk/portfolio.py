@@ -57,8 +57,6 @@ def evaluate_portfolio_risk(
             daily_buy_remaining_usd=max(settings.max_daily_buy_usd - portfolio.daily_buy_used_usd, 0.0),
         )
 
-    # Spot-only Phase 3 does not treat SELL as a new short position. SELL can only
-    # become a future reduce/exit decision for an existing holding.
     if assessment.direction is HypothesisDirection.SELL:
         position = portfolio.position_for(asset)
         if position is None or position.market_value_usd <= 0:
@@ -92,7 +90,11 @@ def evaluate_portfolio_risk(
     if portfolio.open_positions >= settings.max_open_positions and portfolio.position_for(asset) is None:
         reasons.append("maximum number of open positions reached")
 
-    if portfolio.daily_realized_pnl_usd <= -abs(settings.daily_loss_limit_usd):
+    if not portfolio.daily_loss_guard_available:
+        reasons.append("daily realized PnL is unavailable; daily loss guard cannot be verified")
+    elif portfolio.daily_realized_pnl_usd is not None and portfolio.daily_realized_pnl_usd <= -abs(
+        settings.daily_loss_limit_usd
+    ):
         reasons.append("daily loss limit reached")
 
     cash = portfolio.cash_value_usd
@@ -111,7 +113,8 @@ def evaluate_portfolio_risk(
     allocation_headroom = float("inf")
     if max_weight is not None:
         max_asset_value = total * (max_weight / 100.0)
-        current_asset_value = portfolio.position_for(asset).market_value_usd if portfolio.position_for(asset) else 0.0
+        current_position = portfolio.position_for(asset)
+        current_asset_value = current_position.market_value_usd if current_position else 0.0
         allocation_headroom = max(max_asset_value - current_asset_value, 0.0)
         if allocation_headroom <= 0:
             reasons.append("asset is already at or above its maximum portfolio weight")

@@ -51,6 +51,17 @@ def test_watch_buy_is_capped_by_hard_max_position():
     assert result.max_notional_usd == 250
 
 
+def test_unknown_daily_realized_pnl_blocks_new_buy():
+    settings = Settings(kill_switch=False)
+    result = evaluate_portfolio_risk(
+        aggregate(),
+        portfolio(daily_pnl=None),
+        settings,
+    )
+    assert result.approved is False
+    assert "daily realized PnL is unavailable" in " ".join(result.reasons)
+
+
 def test_wait_never_approves_even_if_portfolio_has_capacity():
     settings = Settings(kill_switch=False)
     result = evaluate_portfolio_risk(
@@ -80,7 +91,6 @@ def test_cash_reserve_can_reduce_notional_below_hard_limit():
         portfolio(btc_value=1000, usdc_value=5000, max_btc_pct=100),
         settings,
     )
-    # Total 6000, reserve 4800, so only 200 USD can be deployed.
     assert result.approved is True
     assert result.max_notional_usd == 200
 

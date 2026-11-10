@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from app.portfolio.models import AllocationTarget, CapitalState, PortfolioPosition, PortfolioSnapshot
+from app.portfolio.models import (
+    AllocationTarget,
+    CapitalState,
+    LiquidityState,
+    PortfolioPosition,
+    PortfolioSnapshot,
+)
 
 
 _CAPITAL_STATE_MAP = {
@@ -13,12 +19,50 @@ _CAPITAL_STATE_MAP = {
     "RESERVA": CapitalState.CASH_RESERVE,
 }
 
+_LIQUIDITY_MAP = {
+    "LIQUID": LiquidityState.LIQUID,
+    "LIQUIDO": LiquidityState.LIQUID,
+    "LÍQUIDO": LiquidityState.LIQUID,
+    "STAKED": LiquidityState.STAKED,
+    "STAKING": LiquidityState.STAKED,
+    "POOLED": LiquidityState.POOLED,
+    "POOL": LiquidityState.POOLED,
+    "LP": LiquidityState.POOLED,
+    "LOCKED": LiquidityState.LOCKED,
+    "BLOQUEADO": LiquidityState.LOCKED,
+}
 
-def normalize_capital_state(value: str | None, *, asset: str | None = None, cash_asset: str = "USDC") -> CapitalState:
+
+def normalize_capital_state(
+    value: str | None,
+    *,
+    asset: str | None = None,
+    cash_asset: str = "USDC",
+) -> CapitalState:
     if asset and asset.upper() == cash_asset.upper():
         return CapitalState.CASH_RESERVE
     normalized = " ".join(str(value or "").strip().upper().split())
     return _CAPITAL_STATE_MAP.get(normalized, CapitalState.UNKNOWN)
+
+
+def normalize_liquidity_state(
+    value: str | None,
+    *,
+    asset: str | None = None,
+    cash_asset: str = "USDC",
+) -> LiquidityState:
+    if asset and asset.upper() == cash_asset.upper():
+        return LiquidityState.LIQUID
+    normalized = " ".join(str(value or "").strip().upper().split())
+    if normalized in _LIQUIDITY_MAP:
+        return _LIQUIDITY_MAP[normalized]
+    if "STAK" in normalized:
+        return LiquidityState.STAKED
+    if "POOL" in normalized or "LIQUIDITY" in normalized:
+        return LiquidityState.POOLED
+    if "LOCK" in normalized or "BLOQUE" in normalized:
+        return LiquidityState.LOCKED
+    return LiquidityState.UNKNOWN
 
 
 def _number(value: object) -> float | None:
@@ -47,7 +91,7 @@ def snapshot_from_tracker_rows(
     reconciliation_rows: Sequence[Mapping[str, object]] = (),
     cash_asset: str = "USDC",
     daily_buy_used_usd: float = 0.0,
-    daily_realized_pnl_usd: float = 0.0,
+    daily_realized_pnl_usd: float | None = None,
 ) -> PortfolioSnapshot:
     reconciliation = {
         str(row.get("Activo") or "").strip().upper(): row
@@ -75,6 +119,25 @@ def snapshot_from_tracker_rows(
 
         avg_cost = _number(rec.get("Precio medio reconstruido"))
         capital_pending = _number(rec.get("Capital pendiente USD"))
+        position_type = str(row.get("Tipo posición") or "").strip() or None
+
+        explicit_liquidity = row.get("Estado liquidez") or row.get("Liquidez")
+        liquidity_basis = None
+        if explicit_liquidity:
+            liquidity_state = normalize_liquidity_state(
+                str(explicit_liquidity),
+                asset=asset,
+                cash_asset=cash_asset,
+            )
+            liquidity_basis = "tracker_explicit"
+        else:
+            liquidity_state = normalize_liquidity_state(
+                position_type,
+                asset=asset,
+                cash_asset=cash_asset,
+            )
+            if liquidity_state is not LiquidityState.UNKNOWN:
+                liquidity_basis = "position_type_inference"
 
         positions.append(
             PortfolioPosition(
@@ -85,7 +148,9 @@ def snapshot_from_tracker_rows(
                 capital_pending_usd=capital_pending,
                 capital_state=normalize_capital_state(state_value, asset=asset, cash_asset=cash_asset),
                 custody_sources=_sources(sources_value),
-                position_type=(str(row.get("Tipo posición") or "").strip() or None),
+                position_type=position_type,
+                liquidity_state=liquidity_state,
+                liquidity_basis=liquidity_basis,
             )
         )
 
@@ -97,7 +162,6 @@ def snapshot_from_tracker_rows(
         target = _number(row.get("Peso objetivo %"))
         maximum = _number(row.get("Peso máximo %"))
 
-        # Tracker stores percentages as Sheets fractions (e.g. 0.20 == 20%).
         if target is not None and 0 <= target <= 1:
             target *= 100
         if maximum is not None and 0 <= maximum <= 1:
