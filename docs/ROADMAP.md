@@ -52,12 +52,16 @@
 - per-symbol and pooled five-symbol reports
 - calibration + validation only for candidate screening
 - previously observed OOS remains descriptive only
-- no automatic strategy rule changes
-- next step: run 730-day evidence and review candidate buckets
+- real 730-day run reviewed
+- no pooled bucket has positive return in both calibration and validation
+- XRPUSDT volume_ratio_1h <= 0.75 is the strongest asset-specific research lead
+- ETHUSDT 4h lower-highs/lower-lows is a weaker secondary lead
 
-### Phase 5G - Experimental variant (deferred)
-- define one narrow research variant only if 5F.1 supports it
-- validate on genuinely unseen future data or prospective paper observations
+### Phase 5G - Experimental entry variant (deferred)
+- do not create a general Mean Reversion variant yet
+- next research should test one narrow asset-specific candidate against the unchanged baseline
+- use calibration/validation for design only
+- require genuinely unseen future or prospective evidence before any promotion
 
 ## Phase 6 - Binance Spot Testnet
 - only after new unseen evidence supports progression

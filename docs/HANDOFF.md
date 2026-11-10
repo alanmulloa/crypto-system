@@ -1,4 +1,4 @@
-# HANDOFF - Crypto System after Phase 5F.1 tooling
+# HANDOFF - Crypto System after Phase 5F.1 evidence review
 
 ## Current state
 
@@ -11,74 +11,67 @@ Phase 5 includes:
 - 5C chronological validation;
 - 5D real Binance public-history evidence runner;
 - 5E evidence review;
-- 5F strategy diagnostics and exit research tooling;
+- 5F strategy diagnostics and exit research;
 - 5F evidence review;
-- 5F.1 Mean Reversion entry-quality diagnostics tooling.
+- 5F.1 Mean Reversion entry-quality diagnostics;
+- 5F.1 real 730-day evidence review.
 
 ## Phase 5F conclusion
 
-The 730-day Mean Reversion diagnostic run does **not** justify a Phase 5G exit-tuning
-variant.
+Exit tuning alone did not produce stable positive calibration/validation evidence.
 
-Across all five symbols, pooled net expectancy per $100 research observation was:
+## Phase 5F.1 evidence
 
-- calibration current exit: -0.426 USD;
-- calibration best fixed horizon (4h): -0.324 USD;
-- validation 24h: +0.267 USD;
-- validation 48h: +1.206 USD;
-- observed OOS 24h: -0.178 USD;
-- observed OOS 48h: -0.434 USD.
+The 730-day entry-quality run used:
 
-ATR sensitivity also failed to identify a stable positive calibration/validation
-configuration.
+- BTCUSDT, ETHUSDT, BNBUSDT, SOLUSDT, XRPUSDT;
+- 8,000 max historical points;
+- 24h fixed outcome;
+- minimum 20 observations per bucket.
 
-## Phase 5F.1 tooling
+Pooled 24h average net return:
 
-The entry-quality analyzer uses only information available at signal time.
+- calibration: -0.8291% (1,521 observations);
+- validation: +0.2596% (491 observations);
+- observed OOS: -0.1780% (558 observations).
 
-It reports predetermined buckets for:
+No pooled entry bucket is positive in both calibration and validation.
 
-- score and confidence;
-- 1h RSI, ATR%, volume ratio and EMA distance;
-- 1h EMA20/EMA50 spread;
-- 15m RSI / EMA distance;
-- 4h RSI / EMA distance;
-- count of tracked timeframes below EMA20;
-- 1h / 4h market structure;
-- symbol;
-- time since the previous Mean Reversion WATCH BUY;
-- WATCH BUY count in the previous six hours.
+### Strongest research lead
 
-Future candles are labels only.
+XRPUSDT with 1h volume ratio <= 0.75:
 
-Cross-segment candidate flags use calibration + validation only. The already-observed
-OOS segment is descriptive and cannot influence candidate selection.
+- calibration: +0.1651% across 55 observations;
+- validation: +0.9975% across 27 observations;
+- observed OOS: +0.1645% across 31 observations.
 
-## Run Phase 5F.1
+OOS is descriptive only and cannot be used to select the rule.
 
-From `agent/`:
+### Secondary lead
 
-```bash
-python -m app.evaluation.entry_quality_cli \
-  --days 730 \
-  --symbols BTCUSDT ETHUSDT BNBUSDT SOLUSDT XRPUSDT \
-  --max-points 8000 \
-  --outcome-hours 24 \
-  --min-bucket-observations 20 \
-  --output reports/phase5f1-mean-reversion.json
-```
+ETHUSDT with 4h lower-highs/lower-lows:
 
-The JSON contains per-symbol reports and a pooled five-symbol report.
+- calibration: +0.4367% across 43 observations;
+- validation: +0.0656% across 25 observations;
+- observed OOS: +0.9846% across 15 observations.
 
-## Promotion boundary
+Validation uplift is almost zero and OOS sample is too small, so this remains a
+secondary comparator.
 
-Do not create Phase 5G merely because one bucket is positive.
+## Decision boundary
 
-A candidate entry rule should have useful sample size and consistent
-calibration/validation evidence, preferably across multiple symbols.
+Do not create a universal Mean Reversion Phase 5G variant.
 
-Any selected Phase 5G variant must then be tested on genuinely unseen future data or
-prospectively before Phase 6 can be considered.
+The next research step, if continued, should be a narrowly specified
+asset-specific experimental diagnostic around XRPUSDT low 1h volume conditions,
+with ETH as a comparator.
+
+Do not change the production strategy yet.
+
+Do not reuse the already observed OOS period as a new validation set.
+
+Any candidate must eventually be tested on genuinely unseen future data or
+prospectively.
 
 ## Security boundary
 
@@ -94,6 +87,7 @@ Still absent:
 
 ## Next task
 
-Run Phase 5F.1 on the same 730-day public dataset and review the JSON.
+Design a research-only Phase 5F.2/5G candidate experiment for the XRPUSDT low-volume
+entry condition against the unchanged Mean Reversion baseline.
 
 Do not start Phase 6.
