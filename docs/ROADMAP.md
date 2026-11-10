@@ -1,7 +1,6 @@
 # Roadmap
 
 ## Phase 0 - Foundation ✅
-
 - preserve tracker
 - repo structure
 - Supabase schema
@@ -10,53 +9,58 @@
 - CI skeleton
 
 ## Phase 1 - Market Intelligence ✅
-
 - public Binance Spot market data
-- closed 15m / 1h / 4h / 1d candles
-- universe/liquidity filters
-- EMA / RSI / ATR / volume / structure
-- market regime
-- candidate ranking
-- retry/backoff and partial-failure tolerance
+- closed multi-timeframe candles
+- market indicators/regime
+- candidate scanner
 - no execution
 
 ## Phase 2 - Strategies ✅
 
 ### Phase 2A - Independent Strategy Engine ✅
-- trend following
+- trend
 - pullback
 - breakout
 - mean reversion
 - momentum
-- normalized WATCH / WAIT / REJECT assessments
 
 ### Phase 2B - Strategy Aggregator ✅
-- separate BUY and SELL evidence
-- explicit conflicts
-- global WATCH / WAIT / REJECT
-- no execution
+- separate BUY/SELL evidence
+- conflict handling
+- WATCH / WAIT / REJECT
 
 ### Phase 2C - Historical sanity ✅
-- walk-forward historical runner
-- per-timestamp timeframe truncation
-- strict no-look-ahead regression
-- deterministic output regression
-- strategy/aggregate state diagnostics
-- no profitability optimization
+- walk-forward evaluator
+- no-look-ahead regression
+- deterministic diagnostics
 
 ## Phase 3 - Portfolio + Risk
 
-- consume current tracker portfolio
-- map current custody and capital states
-- allocation/exposure
+### Phase 3A - Portfolio contract + hard risk ✅
+- consume tracker-shaped portfolio data
+- normalize capital states
+- preserve SOLO GANANCIAS semantics
+- allocation targets and max weights
+- reserve-aware sizing
+- daily buy/loss limits
+- max open positions
+- kill switch
+- no shorts
+- no execution
+
+### Phase 3B - Tracker synchronization
+- one-way tracker -> agent snapshot
+- sync freshness/versioning
+- idempotent Supabase persistence
+- keep tracker authoritative during migration
+
+### Phase 3C - Exposure enrichment
+- custody concentration
 - correlation/sector exposure
-- position sizing
-- max daily allocation/loss
-- hard limits independent of strategy
-- research decision -> risk decision contract
+- staking/pool liquidity flags
+- richer risk attribution
 
 ## Phase 4 - Paper Trading
-
 - paper broker
 - fees/slippage
 - order lifecycle
@@ -66,41 +70,31 @@
 - idempotency
 
 ## Phase 5 - Backtesting + Evaluation
-
 - PnL/expectancy/profit factor/drawdown
-- train/calibration vs validation vs out-of-sample
+- calibration/validation/out-of-sample
 - rejected-signal evaluation
-- metrics by asset/regime/timeframe
-- strategy calibration
 
 ## Phase 6 - Binance Spot Testnet
-
 - signed API
 - exchange filters
-- idempotency
 - reconciliation
 - manual approval mode
 
 ## Phase 7 - External Signals
-
-- external/copy adapters
+- adapters
 - independent validation
 - never blind-copy
 
 ## Phase 8 - Dashboard Integration
-
-- expose agent state to current dashboard
-- migrate tracker reads to Supabase incrementally
-- preserve historical reconstruction
+- expose agent state
+- migrate tracker reads progressively
 
 ## Phase 9 - Auto Limited
-
 Only after paper/Testnet evidence:
-
-- allow-listed symbols only
+- allow-listed symbols
 - fixed hard-risk envelope
 - daily loss stop
-- drawdown circuit breaker
+- circuit breakers
 - kill switch outside agent control
 - no withdrawals
 - no leverage
