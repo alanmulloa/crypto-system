@@ -100,7 +100,7 @@ class ProspectiveXrpCandidateEvaluator:
         if fee_bps < 0 or slippage_bps < 0:
             raise ValueError("fees/slippage cannot be negative")
         self.candidate = selected
-        self.frozen_at_ms = frozen_at_ms or parse_iso_ms(DEFAULT_FREEZE_AT_ISO)
+        self.frozen_at_ms = (\n            parse_iso_ms(DEFAULT_FREEZE_AT_ISO)\n            if frozen_at_ms is None\n            else frozen_at_ms\n        )
         self.outcome_hours = outcome_hours
         self.min_matured_observations = min_matured_observations
         self.fee_bps = fee_bps
