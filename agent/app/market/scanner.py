@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
-from app.market.binance_public import BinancePublicClient
+from app.market.binance_public import BinancePublicClient, BinancePublicError
 from app.market.indicators import snapshot
 from app.market.regime import detect_regime
 from app.market.types import (
@@ -15,8 +16,11 @@ from app.market.types import (
 )
 
 
+logger = logging.getLogger(__name__)
+
 STABLE_BASES = {
-    "USDT", "USDC", "FDUSD", "TUSD", "DAI", "USDP", "USDE", "PYUSD", "EUR", "AEUR",
+    "USDT", "USDC", "FDUSD", "TUSD", "DAI", "USDP", "USDE", "PYUSD",
+    "USD1", "USDS", "RLUSD", "EURI", "EUR", "AEUR",
 }
 LEVERAGED_SUFFIXES = ("UP", "DOWN", "BULL", "BEAR")
 WRAPPED_BASES = {"WBTC", "WETH", "WBNB"}
@@ -111,10 +115,24 @@ class MarketScanner:
     def analyze_symbol(self, info: SymbolInfo, ticker: Ticker24h) -> MarketCandidate | None:
         analyses: list[TimeframeAnalysis] = []
         for interval in SUPPORTED_INTERVALS:
-            candles = self.client.klines(info.symbol, interval, self.config.kline_limit)
-            if len(candles) < self.config.min_candles:
+            try:
+                candles = self.client.klines(info.symbol, interval, self.config.kline_limit)
+                if len(candles) < self.config.min_candles:
+                    logger.warning(
+                        "Skipping %s: only %s closed candles for %s",
+                        info.symbol,
+                        len(candles),
+                        interval,
+                    )
+                    return None
+                indicators = snapshot(candles)
+            except BinancePublicError as exc:
+                logger.warning("Skipping %s after Binance error on %s: %s", info.symbol, interval, exc)
                 return None
-            indicators = snapshot(candles)
+            except ValueError as exc:
+                logger.warning("Skipping %s after invalid market data on %s: %s", info.symbol, interval, exc)
+                return None
+
             analyses.append(
                 TimeframeAnalysis(
                     interval=interval,

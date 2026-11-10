@@ -16,6 +16,9 @@ class MarketIndicatorsTest(unittest.TestCase):
         self.assertGreater(volume_ratio(candles), 1)
         self.assertEqual(market_structure(candles), "higher_highs_higher_lows")
 
+    def test_flat_prices_have_neutral_rsi(self):
+        self.assertEqual(rsi([100.0] * 20), 50.0)
+
     def test_regime_detects_bullish_trend(self):
         result = detect_regime(snapshot(make_candles(volatility=0.25)))
         self.assertEqual(result, MarketRegime.BULLISH)

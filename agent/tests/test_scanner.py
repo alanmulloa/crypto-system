@@ -1,5 +1,6 @@
 import unittest
 
+from app.market.binance_public import BinancePublicError
 from app.market.scanner import MarketScanner, ScannerConfig, is_allowed_symbol
 from app.market.types import SymbolInfo, Ticker24h
 from tests.helpers import make_candles
@@ -34,6 +35,7 @@ class MarketScannerTest(unittest.TestCase):
     def test_symbol_filter(self):
         self.assertTrue(is_allowed_symbol(SymbolInfo("BTCUSDT", "BTC", "USDT", "TRADING", True)))
         self.assertFalse(is_allowed_symbol(SymbolInfo("USDCUSDT", "USDC", "USDT", "TRADING", True)))
+        self.assertFalse(is_allowed_symbol(SymbolInfo("USD1USDT", "USD1", "USDT", "TRADING", True)))
         self.assertFalse(is_allowed_symbol(SymbolInfo("BTCUPUSDT", "BTCUP", "USDT", "TRADING", True)))
         self.assertFalse(is_allowed_symbol(SymbolInfo("WBTCUSDT", "WBTC", "USDT", "TRADING", True)))
 
@@ -55,6 +57,29 @@ class MarketScannerTest(unittest.TestCase):
         client.klines = short_klines
         scanner = MarketScanner(client, ScannerConfig(min_candles=120))
         self.assertEqual(scanner.scan(), [])
+
+    def test_one_symbol_failure_does_not_abort_other_candidates(self):
+        class PartialFailureClient(FakeClient):
+            def exchange_info(self):
+                return [
+                    SymbolInfo("BTCUSDT", "BTC", "USDT", "TRADING", True),
+                    SymbolInfo("ETHUSDT", "ETH", "USDT", "TRADING", True),
+                ]
+
+            def tickers_24h(self):
+                return {
+                    "BTCUSDT": Ticker24h("BTCUSDT", 65000, 900_000_000, 2.0, 1_000_000),
+                    "ETHUSDT": Ticker24h("ETHUSDT", 3500, 700_000_000, 1.0, 800_000),
+                }
+
+            def klines(self, symbol, interval, limit=250):
+                if symbol == "BTCUSDT":
+                    raise BinancePublicError("temporary")
+                return make_candles(limit, volatility=0.25)
+
+        scanner = MarketScanner(PartialFailureClient(), ScannerConfig(prefilter_limit=10, candidate_limit=5))
+        results = scanner.scan()
+        self.assertEqual([item.symbol for item in results], ["ETHUSDT"])
 
 
 if __name__ == "__main__":
