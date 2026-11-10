@@ -1,54 +1,40 @@
-# HANDOFF - Crypto System after Phase 3C
+# HANDOFF - Crypto System after Phase 4A
 
 ## Current state
 
-Phases 1 and 2 are complete. Phase 3 now includes:
+Phases 1-3 are complete. Phase 4A adds a deterministic in-memory Paper Broker.
 
-- portfolio contract;
-- hard portfolio-aware risk;
-- one-way tracker synchronization;
-- custody/liquidity exposure diagnostics;
-- real daily-buy usage from the tracker operation journal.
+It can simulate MARKET/LIMIT orders, cash, positions, fees, slippage and realized PnL.
 
-The tracker remains authoritative for portfolio state.
+It is **not connected** to strategies or real exchange APIs.
 
-## Important safety change
+## Paper Broker boundary
 
-The bridge no longer claims daily realized PnL is zero.
+`agent/app/execution/paper.py`
 
-The current operation journal cannot calculate realized PnL rigorously, so:
+The class performs no network I/O.
 
-`daily_realized_pnl_usd = null`
+There is no execution API route.
 
-The Risk Manager blocks new BUY approvals while this value is unavailable.
+No Binance API key is read or used.
 
-This prevents an unknown daily-loss state from silently bypassing the loss limit.
+## Idempotency
 
-## Exposure diagnostics
+Every paper order requires a unique idempotency key. Exact replay returns the original order; conflicting reuse raises.
 
-`analyze_exposure()` reports:
+## Accounting
 
-- exact single-source custody exposure;
-- multi-source unattributed value;
-- unknown custody value;
-- known liquid value;
-- explicit/inferred illiquid value;
-- unknown liquidity value.
+- BUY fees enter average cost.
+- SELL fees reduce net proceeds.
+- realized PnL is recorded per fill.
+- daily realized PnL can be queried from paper fills.
 
-Multi-source positions are not divided equally.
+This gives the next phase a trustworthy daily-loss signal for the simulated account.
 
-## Tracker bridge
+## Next task - Phase 4B
 
-`dailyBuyUsedUsdV48_()` now calculates today's executed purchases from `Operaciones ejecutadas`.
+Add an orchestration boundary that accepts only an approved portfolio RiskDecision and turns it into a PaperOrderRequest.
 
-## Next task
+Persist paper orders/fills/trades through repository interfaces backed by Supabase.
 
-Phase 4 should introduce the Paper Broker and, as part of its fill/trade journal, create an auditable realized-PnL ledger. Only then should the daily loss guard be considered complete for automated paper execution.
-
-Still prohibited:
-
-- real trading;
-- Binance private trading API;
-- Futures/Margin/leverage;
-- withdrawals;
-- agent write-back to tracker.
+Do not add Binance private APIs yet.
