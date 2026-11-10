@@ -1,0 +1,58 @@
+name: Phase 5G prospective evidence
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: phase5g-prospective
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+      - run: ruff check app tests
+      - run: pytest -q
+
+      - name: Generate fresh public-Binance report
+        run: |
+          python -m app.evaluation.prospective_candidate_cli \
+            --output reports/phase5g/fresh.json
+
+      - name: Validate continuity and persist evidence
+        run: |
+          python -m app.evaluation.prospective_collection \
+            --fresh-report reports/phase5g/fresh.json \
+            --latest reports/phase5g/latest.json \
+            --history-dir reports/phase5g/history
+          rm reports/phase5g/fresh.json
+
+      - name: Commit immutable evidence snapshot
+        run: |
+          if git diff --quiet -- reports/phase5g; then
+            echo "No evidence changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reports/phase5g/latest.json reports/phase5g/history/
+          git commit -m "Collect Phase 5G prospective evidence"
+          git push origin HEAD:main
