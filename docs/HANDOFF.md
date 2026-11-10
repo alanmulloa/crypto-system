@@ -1,49 +1,37 @@
-# HANDOFF - Crypto System after Phase 4B
+# HANDOFF - Crypto System after Phase 4C
 
 ## Current state
 
-Phases 1-3 are complete. Phase 4A provides a deterministic Paper Broker. Phase 4B adds the risk-gated orchestration and durable paper persistence boundary.
+Phases 1-4 are implemented.
 
-## Safety path
+The system now contains an end-to-end paper-only cycle from public market candidates through strategies, aggregation, portfolio-aware risk and the deterministic Paper Broker.
 
-A strategy cannot call the broker directly through the orchestration path.
+## Disabled by default
 
-The required chain is:
+`PAPER_LOOP_ENABLED=false`
 
-`AggregatedAssessment -> PortfolioRiskDecision -> PaperExecutionIntent -> PaperExecutionOrchestrator -> PaperBroker`
+A code deploy does not start trading or paper cycles automatically.
 
-Only an APPROVED risk decision can create a paper BUY.
+There is no scheduler/daemon in Phase 4C.
 
-The requested notional is capped by the Risk Manager authorization.
+## Hard boundaries
 
-## Restart safety
+- public market data only;
+- no private Binance APIs;
+- no Futures/Margin/leverage;
+- no withdrawals;
+- no real trading;
+- paper BUYs require approved PortfolioRiskDecision;
+- kill switch is downstream of strategy output;
+- daily realized paper loss is fed into the next risk check;
+- repeat cycle ids are idempotent.
 
-Idempotency is checked in the repository before a broker call. This protects against process restarts creating a duplicate simulated fill.
+## Exposure feedback
 
-## Persistence
+Paper positions are overlaid onto the tracker portfolio context before each risk decision, so simulated purchases affect subsequent max-weight/open-position/cash checks.
 
-Migration:
+## Next task - Phase 5
 
-`supabase/migrations/006_paper_execution.sql`
+Build evaluation around paper/historical outcomes before introducing any Testnet credentials.
 
-adds durable idempotency/risk metadata to paper orders and realized PnL to fills.
-
-## Still not active automatically
-
-There is no scheduler and no execution API route.
-
-Nothing in Phase 4B automatically converts a WATCH into an order.
-
-No Binance private API exists.
-
-## Next task - Phase 4C
-
-Build a disabled-by-default end-to-end paper loop, including paper account state and realized-PnL feedback into hard risk.
-
-The end-to-end tests must prove:
-
-- kill switch stops the loop;
-- daily loss stops new paper buys;
-- duplicate cycles cannot double-fill;
-- no WAIT/REJECT state creates an order;
-- maximum notional cannot be exceeded.
+Do not move to Testnet merely because paper execution works mechanically. Require measurable evidence and out-of-sample checks first.

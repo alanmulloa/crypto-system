@@ -97,11 +97,7 @@ class PaperAccount:
 
 
 class PaperBroker:
-    """Deterministic in-memory broker for paper trading only.
-
-    This class performs no network I/O and has no knowledge of Binance credentials.
-    It is intentionally not exposed by an API route in Phase 4A.
-    """
+    """Deterministic in-memory broker for paper trading only."""
 
     def __init__(
         self,
@@ -145,11 +141,7 @@ class PaperBroker:
         return price
 
     def _reject(self, order: PaperOrder, reason: str) -> PaperOrder:
-        rejected = replace(
-            order,
-            status=PaperOrderStatus.REJECTED,
-            rejection_reason=reason,
-        )
+        rejected = replace(order, status=PaperOrderStatus.REJECTED, rejection_reason=reason)
         self.orders_by_id[order.order_id] = rejected
         return rejected
 
@@ -172,14 +164,12 @@ class PaperBroker:
             cash_required = gross_usd + fee_usd
             if cash_required > self.account.cash_usd + 1e-9:
                 return self._reject(order, "insufficient paper cash")
-
             existing_cost = position.quantity * position.avg_cost_usd
             new_cost = existing_cost + gross_usd + fee_usd
             new_quantity = position.quantity + quantity
             position.quantity = new_quantity
             position.avg_cost_usd = new_cost / new_quantity if new_quantity else 0.0
             self.account.cash_usd -= cash_required
-
         else:
             if quantity > position.quantity + 1e-12:
                 return self._reject(order, "insufficient paper position")
@@ -218,7 +208,6 @@ class PaperBroker:
     ) -> PaperOrder:
         if market_price <= 0:
             raise ValueError("market_price must be positive")
-
         existing_id = self.orders_by_key.get(request.idempotency_key)
         if existing_id:
             existing = self.orders_by_id[existing_id]
@@ -227,19 +216,13 @@ class PaperBroker:
             return existing
 
         order_id = self._next_order_id()
-        order = PaperOrder(
-            order_id=order_id,
-            request=request,
-            status=PaperOrderStatus.OPEN,
-        )
+        order = PaperOrder(order_id=order_id, request=request, status=PaperOrderStatus.OPEN)
         self.orders_by_key[request.idempotency_key] = order_id
         self.orders_by_id[order_id] = order
 
         if not self._market_crosses_limit(request, market_price):
             return order
-
-        filled_at = now or datetime.now(timezone.utc)
-        return self._fill(order, market_price, filled_at)
+        return self._fill(order, market_price, now or datetime.now(timezone.utc))
 
     def process_price(
         self,
@@ -273,11 +256,24 @@ class PaperBroker:
         self.orders_by_id[order_id] = cancelled
         return cancelled
 
+    @staticmethod
+    def _utc_day(value: datetime):
+        return value.astimezone(timezone.utc).date() if value.tzinfo else value.date()
+
     def daily_realized_pnl(self, day: datetime) -> float:
-        target = day.astimezone(timezone.utc).date() if day.tzinfo else day.date()
+        target = self._utc_day(day)
         return sum(
             order.fill.realized_pnl_usd
             for order in self.orders_by_id.values()
+            if order.fill is not None and self._utc_day(order.fill.filled_at) == target
+        )
+
+    def daily_buy_used_usd(self, day: datetime) -> float:
+        target = self._utc_day(day)
+        return sum(
+            order.fill.gross_usd
+            for order in self.orders_by_id.values()
             if order.fill is not None
-            and order.fill.filled_at.astimezone(timezone.utc).date() == target
+            and order.fill.side is PaperSide.BUY
+            and self._utc_day(order.fill.filled_at) == target
         )
