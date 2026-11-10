@@ -1,85 +1,79 @@
-# HANDOFF - Crypto System after Phase 1 audit
+# HANDOFF - Crypto System after Phase 2A
 
 ## Current state
 
-Phase 0 foundation is preserved and Phase 1 Market Intelligence is implemented. A Codex audit/hardening pass was performed before Phase 2. The tracker remains under `tracker/apps-script/crypto_tracker_v4_7_1_full/` and has not been functionally replaced.
+Phase 1 Market Intelligence is hardened and Phase 2A adds an independent Strategy Engine. The existing tracker remains preserved.
 
-The agent can use Binance public Spot endpoints without API keys to:
+The agent can:
 
-- read exchange metadata;
-- read 24h tickers;
-- download 15m, 1h, 4h and 1d candles;
-- expose only fully closed candles to analysis;
-- filter liquid USDT Spot markets;
-- exclude known stablecoin bases, leveraged-token suffixes and selected wrapped duplicates;
-- reject insufficient history;
-- compute EMA, RSI, ATR, volume ratio and simple market structure;
-- classify market regime;
-- rank research candidates;
-- tolerate a transient per-symbol failure without aborting the full scan.
+- scan public Binance Spot market data;
+- analyze closed candles only;
+- classify regime and rank research candidates;
+- evaluate five independent strategy hypotheses:
+  - Trend Following
+  - Pullback
+  - Breakout
+  - Mean Reversion
+  - Momentum
 
-It cannot generate BUY/SELL strategy signals or place orders.
+It still cannot aggregate these hypotheses into a trade decision or place orders.
 
-## Audit hardening
+## Phase 2A invariants
 
-See `docs/CODEX_AUDIT_PHASE1.md`.
-
-Important fixes:
-
-- incomplete/current Binance candles are discarded;
-- transient public API failures use bounded retry/backoff;
-- one failed symbol no longer aborts the entire scan;
-- flat-price RSI is neutral (50), not 100;
-- stablecoin exclusion includes USD1/USDS/RLUSD/EURI;
-- Supabase RLS is enabled for all current public-schema tables by migration 003.
-
-## Security invariants
-
-Do not weaken these:
-
-- no real trading;
-- no Futures/Margin/leverage;
-- no withdrawals;
-- no private Binance endpoints in Phase 1;
-- no API key needed for scanner;
-- `KILL_SWITCH=true` default;
-- risk limits remain operator configuration;
-- service-role Supabase key is backend-only;
-- public market source is independent from future execution/Testnet configuration;
-- no anon/authenticated Supabase policies for trading state unless explicitly designed and reviewed.
+- `ranking_score` is not strategy confidence.
+- Strategies import market contracts only.
+- Strategies do not import Risk Manager or execution modules.
+- Strategy state is only WATCH / WAIT / REJECT.
+- BUY/SELL is a hypothesis direction, not an order.
+- A rejected assessment has no direction.
+- Technical levels are hypothetical research levels derived deterministically from current closed-candle indicators.
 
 ## Important files
 
-- `agent/app/market/binance_public.py`
-- `agent/app/market/indicators.py`
-- `agent/app/market/regime.py`
-- `agent/app/market/scanner.py`
-- `agent/app/market/service.py`
-- `agent/app/market/cli.py`
-- `agent/app/storage/market_repository.py`
-- `supabase/migrations/002_market_intelligence.sql`
-- `supabase/migrations/003_enable_rls.sql`
-- `docs/CODEX_AUDIT_PHASE1.md`
+- `agent/app/strategies/base.py`
+- `agent/app/strategies/common.py`
+- `agent/app/strategies/trend.py`
+- `agent/app/strategies/pullback.py`
+- `agent/app/strategies/breakout.py`
+- `agent/app/strategies/mean_reversion.py`
+- `agent/app/strategies/momentum.py`
+- `agent/app/strategies/engine.py`
+- `agent/tests/test_strategies.py`
+- `docs/PHASE2A_STRATEGY_ENGINE.md`
 
-## Validation
+## Security invariants
 
-Before the audit, GitHub Actions on `main` passed `ruff check app tests` and `pytest -q`.
+Do not weaken:
 
-The audit adds regression tests for closed-candle filtering, retry behavior, flat RSI, stablecoin exclusion and partial scanner failure. Merge only if the audit PR CI is green.
+- Spot only;
+- no real trading;
+- no private Binance endpoints;
+- no Futures/Margin/leverage;
+- no withdrawals;
+- no broker calls from strategy code;
+- hard risk limits remain outside strategy control;
+- Supabase service role backend-only;
+- RLS remains enabled.
 
 ## Open technical debt
 
-Not blockers for Phase 2, but required before later autonomous execution:
+From Phase 1:
 
-- market observation idempotency and retention;
-- order-book spread/depth filter;
-- request-budget monitoring, caching and optional bounded concurrency;
-- metadata-driven stablecoin/wrapped classification;
-- payload/schema versioning;
-- historical validation of regime thresholds.
+- market observation idempotency/retention;
+- order-book spread/depth;
+- cache/request-budget monitoring;
+- metadata-driven asset exclusions;
+- regime threshold historical validation.
 
-## Next task - Phase 2
+From Phase 2A:
 
-Implement a normalized strategy interface for trend following, pullback, breakout, mean reversion and momentum. Strategies may consume MarketCandidate/TimeframeAnalysis but must not access brokers or private APIs. Strategy outputs need score, confidence, direction hypothesis, entry/invalidation context and explicit reasons.
+- heuristic strategy thresholds require historical validation;
+- technical entry/stop/target levels are generic ATR-based hypotheses;
+- strategies currently consume indicator snapshots, not raw candle patterns;
+- no conflict aggregator yet.
 
-Do not implement order execution. Do not reuse `ranking_score` as strategy confidence. Before merging Phase 2, run historical sanity checks proving indicators and strategies only use information available at each timestamp.
+## Next task - Phase 2B
+
+Build a Strategy Aggregator that consumes the five assessments and emits a single research state of WATCH / WAIT / REJECT with explicit conflict/evidence handling. It must not call Risk Manager or execution.
+
+Then implement Phase 2C historical sanity checks before integrating portfolio/risk.

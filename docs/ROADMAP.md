@@ -22,10 +22,13 @@
 - bullish / bearish / ranging / high-volatility regimes
 - multi-timeframe research-candidate ranking
 - optional Supabase persistence without credentials required for tests
+- closed-candle filtering and retry/backoff
 - mocked integration coverage
-- no buy/sell signals
+- no buy/sell execution signals
 
 ## Phase 2 - Strategies
+
+### Phase 2A - Independent Strategy Engine ✅
 
 - standard strategy contract
 - trend following
@@ -33,9 +36,25 @@
 - breakout
 - mean reversion
 - momentum
-- normalized scores and reasons
-- conflict handling across strategies/timeframes
-- decision output limited to research/watch/wait/reject until risk integration
+- normalized scores, confidence and reasons
+- hypothetical technical levels
+- WATCH / WAIT / REJECT only
+- no broker/risk dependency
+
+### Phase 2B - Strategy Aggregator
+
+- compare independent assessments
+- resolve directional conflicts
+- preserve per-strategy evidence
+- global WATCH / WAIT / REJECT
+- no execution
+
+### Phase 2C - Historical sanity
+
+- historical runner
+- strict no-look-ahead
+- per-strategy diagnostics
+- initial out-of-sample scaffolding
 
 ## Phase 3 - Portfolio + Risk
 
