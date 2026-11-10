@@ -5,7 +5,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Protocol
+from typing import Callable, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -88,7 +88,7 @@ class PortfolioSyncService:
         cash_asset: str = "USDC",
         max_age_minutes: int = 30,
         future_tolerance_minutes: int = 5,
-        now: callable | None = None,
+        now: Callable[[], datetime] | None = None,
     ):
         if max_age_minutes <= 0:
             raise ValueError("max_age_minutes must be positive")
