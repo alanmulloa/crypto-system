@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
+from http.client import IncompleteRead, RemoteDisconnected
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -72,7 +73,7 @@ class BinancePublicClient:
                     else self.backoff_seconds * (2**attempt)
                 )
                 self.sleep_func(delay)
-            except (URLError, TimeoutError, OSError) as exc:
+            except (URLError, TimeoutError, OSError, IncompleteRead, RemoteDisconnected) as exc:
                 if attempt >= self.max_retries:
                     raise BinancePublicError(
                         f"Binance public request failed for {path}: {exc}"

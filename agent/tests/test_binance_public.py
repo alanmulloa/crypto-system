@@ -1,5 +1,6 @@
 import json
 import unittest
+from http.client import IncompleteRead
 from unittest.mock import patch
 from urllib.error import URLError
 
@@ -79,6 +80,21 @@ class BinancePublicClientTest(unittest.TestCase):
         with patch(
             "app.market.binance_public.urlopen",
             side_effect=[URLError("temporary"), FakeResponse(payload)],
+        ) as mocked:
+            self.assertEqual(client.exchange_info(), [])
+        self.assertEqual(mocked.call_count, 2)
+
+    def test_retries_incomplete_response_body(self):
+        payload = {"symbols": []}
+
+        class IncompleteResponse(FakeResponse):
+            def read(self):
+                raise IncompleteRead(b"partial", 10)
+
+        client = BinancePublicClient(max_retries=1, backoff_seconds=0, sleep_func=lambda _: None)
+        with patch(
+            "app.market.binance_public.urlopen",
+            side_effect=[IncompleteResponse(payload), FakeResponse(payload)],
         ) as mocked:
             self.assertEqual(client.exchange_info(), [])
         self.assertEqual(mocked.call_count, 2)

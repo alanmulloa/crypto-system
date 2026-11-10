@@ -127,7 +127,7 @@ class RealEvidenceRunner:
                     interval,
                     start_time_ms=start_time_ms,
                     end_time_ms=end_time_ms,
-                    page_limit=1000,
+                    page_limit=500,
                 )
             )
             for interval in EVIDENCE_INTERVALS
