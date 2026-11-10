@@ -1,0 +1,2913 @@
+/**
+ * Crypto Tracker - Apps Script v1
+ * Diseñado para la hoja "Mercado" de cartera_crypto_tracker_v7.
+ * Fuente principal: Binance public market data (sin API key).
+ * No ejecuta operaciones ni accede a cuentas privadas.
+ */
+
+const CT = {
+  SHEET_MARKET: 'Mercado',
+  SHEET_CONFIG: 'Config',
+  BASE_URL: 'https://data-api.binance.vision',
+  DEFAULT_QUOTE: 'USDT',
+  MAX_ROWS: 200,
+  USER_AGENT: 'CryptoTrackerSheet/1.0',
+  SKIP_ASSETS: new Set(['USDC']),
+  SYMBOL_OVERRIDES: {
+    // Añadir aquí excepciones si un ticker de la hoja no coincide con Binance.
+    // Ejemplo: 'S': 'SUSDT'
+  }
+};
+
+const CRYPTO_TRACKER_BACKEND_VERSION = 'v2.9.0';
+
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('Crypto Tracker')
+    .addItem('Actualizar mercado ahora', 'updateCryptoMarket')
+    .addItem('Actualizar motor de decisiones v2.3', 'upgradeDecisionEngineV23')
+    .addItem('Configurar asignación objetivo', 'setupAllocationV22')
+    .addItem('Configurar alertas y seguimiento v2.4', 'upgradeMonitoringV24')
+    .addItem('Configurar propuestas y radar v2.5', 'upgradeTradingProposalsV25')
+    .addItem('Configurar wallets on-chain v2.6', 'upgradeOnChainSyncV26')
+    .addItem('Sincronizar wallets ahora', 'syncOnChainWalletsV26')
+    .addItem('Actualizar radar externo', 'scanExternalRadarV25')
+    .addItem('Recalcular pronósticos 24h/7d/30d', 'upgradeForecastsV43')
+    .addItem('Recalcular alertas ahora', 'generateAlertsV24')
+    .addItem('Evaluar histórico 24h/7d', 'evaluateDecisionHistoryV24')
+    .addItem('Calibrar pronósticos v4.6', 'runForecastCalibrationV46')
+    .addItem('Actualizar sizing dinámico v4.6', 'runDynamicSizingV46')
+    .addItem('Actualizar conciliación histórica v4.6', 'runHistoricalReconciliationV46')
+    .addItem('Configurar operaciones reales v4.7', 'repairV47')
+    .addItem('Instalar actualización cada 4 horas', 'install4hTrigger')
+    .addItem('Eliminar triggers de Crypto Tracker', 'removeCryptoTriggers')
+    .addSeparator()
+    .addItem('Probar conexión Binance', 'testBinanceConnection')
+    .addToUi();
+}
+
+function updateCryptoMarket() {
+  const ss = SpreadsheetApp.getActive();
+  const sh = ss.getSheetByName(CT.SHEET_MARKET);
+  if (!sh) throw new Error('No existe la hoja "Mercado".');
+
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return;
+
+  const assets = sh.getRange(2, 1, lastRow - 1, 1).getDisplayValues().flat();
+  const now = new Date();
+
+  // v2.3: elimina notas/comentarios heredados de fuentes antiguas (p.ej. Coinotag).
+  // La fuente vigente queda declarada en la columna T.
+  sh.getRange(2, 1, lastRow - 1, 20).clearNote();
+
+  for (let i = 0; i < assets.length; i++) {
+    const row = i + 2;
+    const asset = String(assets[i] || '').trim().toUpperCase();
+    if (!asset) continue;
+
+    try {
+      if (CT.SKIP_ASSETS.has(asset)) {
+        writeStablecoinRow_(sh, row, asset, now);
+        continue;
+      }
+
+      const symbol = resolveBinanceSymbol_(asset);
+      if (!symbol) {
+        markUnavailable_(sh, row, asset, now, 'Sin par USDT disponible en Binance');
+        continue;
+      }
+
+      const ticker = fetchJson_('/api/v3/ticker/24hr?symbol=' + encodeURIComponent(symbol));
+      const k4h = getKlines_(symbol, '4h', 220);
+      const k1d = getKlines_(symbol, '1d', 240);
+      const k1w = getKlines_(symbol, '1w', 220);
+
+      if (k4h.length < 30 || k1d.length < 60 || k1w.length < 30) {
+        markUnavailable_(sh, row, asset, now, 'Histórico insuficiente para indicadores');
+        continue;
+      }
+
+      const price = Number(ticker.lastPrice);
+      const change24 = Number(ticker.priceChangePercent) / 100;
+
+      const c4 = closes_(k4h);
+      const c1d = closes_(k1d);
+      const c1w = closes_(k1w);
+
+      const rsi4h = rsi_(c4, 14);
+      const rsi1d = rsi_(c1d, 14);
+      const rsi1w = rsi_(c1w, 14);
+
+      const ema20 = emaLast_(c1d, 20);
+      const ema50 = emaLast_(c1d, 50);
+      const ema200 = c1d.length >= 200 ? emaLast_(c1d, 200) : null;
+
+      const trend4h = trend_(c4);
+      const trend1d = trend_(c1d);
+      const trend1w = trend_(c1w);
+
+      const sr = supportResistance_(k1d, price, 80);
+      const fib = fibonacci_(k1d, 120);
+      const volText = volumeConfirmation_(k1d);
+
+      // B:T => columnas 2..20
+      sh.getRange(row, 2, 1, 19).setValues([[
+        price,                          // B Precio mercado USD
+        change24,                       // C Cambio 24h %
+        rsi4h,                          // D RSI 4H
+        rsi1d,                          // E RSI 1D
+        rsi1w,                          // F RSI 1W
+        trend4h,                        // G Tendencia 4H
+        trend1d,                        // H Tendencia 1D
+        trend1w,                        // I Tendencia 1W
+        sr.support,                     // J Soporte
+        sr.resistance,                  // K Resistencia
+        fib.f382,                       // L Fib 38,2%
+        fib.f50,                        // M Fib 50%
+        fib.f618,                       // N Fib 61,8%
+        ema20,                          // O EMA20
+        ema50,                          // P EMA50
+        ema200,                         // Q EMA200
+        volText,                        // R Volumen/confirmación
+        now,                            // S Fecha actualización
+        'Binance Market Data: ' + symbol + ' | RSI/EMA/Fibonacci/soportes/resistencias calculados por Crypto Tracker | actualizado ' + Utilities.formatDate(now, Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm') // T Fuente/notas
+      ]]);
+
+      Utilities.sleep(120);
+    } catch (err) {
+      markUnavailable_(sh, row, asset, now, 'Error: ' + err.message);
+    }
+  }
+
+  formatMarketSheet_(sh, lastRow);
+  SpreadsheetApp.flush();
+  // v2.6: sincroniza saldos publicos on-chain antes de recalcular decisiones.
+  try { syncOnChainWalletsV26_({ silent: true }); } catch (e) { console.log('Wallet sync v2.6: ' + e.message); }
+  recalcDecisionEngineV23_();
+  augmentDecisionProposalsV25_();
+  scanExternalRadarV25();
+  augmentForecastsV43_();
+  augmentDynamicSizingV46_();
+  appendForecastHistoryV46_();
+  evaluateForecastHistoryV46_();
+  buildForecastCalibrationV46_();
+  refreshHistoricalReconciliationV46_();
+  appendDecisionHistoryV23_();
+  closeStaleAlertsV264_();
+  generateAlertsV264_();
+  repairDashboardV264_();
+  evaluateDecisionHistoryV24_();
+  buildPerformanceV24_();
+  ss.toast('Mercado, decisiones, alertas e histórico actualizados', 'Crypto Tracker', 5);
+}
+
+function resolveBinanceSymbol_(asset) {
+  if (CT.SYMBOL_OVERRIDES[asset]) return CT.SYMBOL_OVERRIDES[asset];
+  const symbol = asset + CT.DEFAULT_QUOTE;
+  try {
+    const data = fetchJson_('/api/v3/exchangeInfo?symbol=' + encodeURIComponent(symbol));
+    if (data && data.symbols && data.symbols.length && data.symbols[0].status === 'TRADING') return symbol;
+  } catch (e) {
+    return null;
+  }
+  return null;
+}
+
+function getKlines_(symbol, interval, limit) {
+  const url = '/api/v3/klines?symbol=' + encodeURIComponent(symbol) +
+    '&interval=' + encodeURIComponent(interval) + '&limit=' + Math.min(limit, 1000);
+  const raw = fetchJson_(url);
+  return raw.map(r => ({
+    time: Number(r[0]),
+    open: Number(r[1]),
+    high: Number(r[2]),
+    low: Number(r[3]),
+    close: Number(r[4]),
+    volume: Number(r[5])
+  }));
+}
+
+function fetchJson_(path) {
+  const res = UrlFetchApp.fetch(CT.BASE_URL + path, {
+    method: 'get',
+    muteHttpExceptions: true,
+    headers: { 'User-Agent': CT.USER_AGENT }
+  });
+  const code = res.getResponseCode();
+  const txt = res.getContentText();
+  if (code < 200 || code >= 300) throw new Error('HTTP ' + code + ' ' + txt.slice(0, 180));
+  return JSON.parse(txt);
+}
+
+function closes_(klines) {
+  return klines.map(x => x.close);
+}
+
+function rsi_(values, period) {
+  if (!values || values.length <= period) return null;
+  let gains = 0, losses = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = values[i] - values[i - 1];
+    if (d >= 0) gains += d; else losses -= d;
+  }
+  let avgGain = gains / period;
+  let avgLoss = losses / period;
+  for (let i = period + 1; i < values.length; i++) {
+    const d = values[i] - values[i - 1];
+    const gain = Math.max(d, 0);
+    const loss = Math.max(-d, 0);
+    avgGain = ((avgGain * (period - 1)) + gain) / period;
+    avgLoss = ((avgLoss * (period - 1)) + loss) / period;
+  }
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return round_(100 - (100 / (1 + rs)), 1);
+}
+
+function emaSeries_(values, period) {
+  if (!values || values.length < period) return [];
+  const k = 2 / (period + 1);
+  let seed = 0;
+  for (let i = 0; i < period; i++) seed += values[i];
+  let prev = seed / period;
+  const result = new Array(period - 1).fill(null);
+  result.push(prev);
+  for (let i = period; i < values.length; i++) {
+    prev = values[i] * k + prev * (1 - k);
+    result.push(prev);
+  }
+  return result;
+}
+
+function emaLast_(values, period) {
+  const s = emaSeries_(values, period);
+  return s.length ? round_(s[s.length - 1], 8) : null;
+}
+
+function trend_(values) {
+  if (!values || values.length < 55) return 'NEUTRAL';
+  const e20 = emaLastRaw_(values, 20);
+  const e50 = emaLastRaw_(values, 50);
+  const close = values[values.length - 1];
+  const prevClose = values[values.length - 2];
+
+  if (close > e20 && e20 > e50 && close >= prevClose) return 'ALCISTA';
+  if (close < e20 && e20 < e50 && close <= prevClose) return 'BAJISTA';
+  return 'NEUTRAL';
+}
+
+function emaLastRaw_(values, period) {
+  if (values.length < period) return null;
+  const k = 2 / (period + 1);
+  let ema = values.slice(0, period).reduce((a,b) => a+b, 0) / period;
+  for (let i = period; i < values.length; i++) ema = values[i] * k + ema * (1-k);
+  return ema;
+}
+
+function supportResistance_(klines, currentPrice, lookback) {
+  const d = klines.slice(-Math.min(lookback, klines.length));
+  const pivL = [];
+  const pivH = [];
+  for (let i = 2; i < d.length - 2; i++) {
+    if (d[i].low <= d[i-1].low && d[i].low <= d[i-2].low && d[i].low <= d[i+1].low && d[i].low <= d[i+2].low) pivL.push(d[i].low);
+    if (d[i].high >= d[i-1].high && d[i].high >= d[i-2].high && d[i].high >= d[i+1].high && d[i].high >= d[i+2].high) pivH.push(d[i].high);
+  }
+  const supports = pivL.filter(x => x < currentPrice).sort((a,b) => b-a);
+  const resistances = pivH.filter(x => x > currentPrice).sort((a,b) => a-b);
+  const fallbackLow = Math.min.apply(null, d.slice(-20).map(x => x.low));
+  const fallbackHigh = Math.max.apply(null, d.slice(-20).map(x => x.high));
+  return {
+    support: round_(supports[0] || fallbackLow, 8),
+    resistance: round_(resistances[0] || fallbackHigh, 8)
+  };
+}
+
+function fibonacci_(klines, lookback) {
+  const d = klines.slice(-Math.min(lookback, klines.length));
+  let low = Infinity, high = -Infinity, lowIdx = -1, highIdx = -1;
+  d.forEach((x, i) => {
+    if (x.low < low) { low = x.low; lowIdx = i; }
+    if (x.high > high) { high = x.high; highIdx = i; }
+  });
+  const range = high - low;
+  if (!isFinite(range) || range <= 0) return {f382:null, f50:null, f618:null};
+
+  // Si el máximo ocurrió después del mínimo, asumimos impulso alcista y calculamos retrocesos desde el máximo.
+  if (highIdx > lowIdx) {
+    return {
+      f382: round_(high - range * 0.382, 8),
+      f50: round_(high - range * 0.5, 8),
+      f618: round_(high - range * 0.618, 8)
+    };
+  }
+  // Impulso bajista: retrocesos desde el mínimo hacia arriba.
+  return {
+    f382: round_(low + range * 0.382, 8),
+    f50: round_(low + range * 0.5, 8),
+    f618: round_(low + range * 0.618, 8)
+  };
+}
+
+function volumeConfirmation_(klines) {
+  if (!klines || klines.length < 21) return 'Volumen insuficiente';
+  const vols = klines.map(x => x.volume);
+  const last = vols[vols.length - 1];
+  const prev20 = vols.slice(-21, -1);
+  const avg = prev20.reduce((a,b) => a+b, 0) / prev20.length;
+  if (!avg) return 'Sin referencia de volumen';
+  const ratio = last / avg;
+  if (ratio >= 1.5) return 'Volumen fuerte (' + round_(ratio,2) + 'x media 20D)';
+  if (ratio >= 1.1) return 'Volumen por encima de media (' + round_(ratio,2) + 'x)';
+  if (ratio <= 0.7) return 'Volumen débil (' + round_(ratio,2) + 'x media 20D)';
+  return 'Volumen normal (' + round_(ratio,2) + 'x media 20D)';
+}
+
+function writeStablecoinRow_(sh, row, asset, now) {
+  sh.getRange(row, 2, 1, 19).setValues([[
+    1, 0, 50, 50, 50,
+    'NEUTRAL','NEUTRAL','NEUTRAL',
+    0.995,1.005,null,null,null,
+    1,1,1,
+    'Stablecoin / reserva de liquidez',
+    now,
+    asset + ': valor operativo 1 USD; sin análisis técnico direccional'
+  ]]);
+}
+
+function markUnavailable_(sh, row, asset, now, reason) {
+  // Mantiene precio previo si existe y limpia solo indicadores automáticos.
+  sh.getRange(row, 3, 1, 16).clearContent(); // C:R
+  sh.getRange(row, 19).setValue(now);        // S
+  sh.getRange(row, 20).setValue(asset + ': ' + reason); // T
+}
+
+function formatMarketSheet_(sh, lastRow) {
+  if (lastRow < 2) return;
+  sh.getRange(2, 3, lastRow - 1, 1).setNumberFormat('0.00%');
+  sh.getRange(2, 4, lastRow - 1, 3).setNumberFormat('0.0');
+  sh.getRange(2, 19, lastRow - 1, 1).setNumberFormat('dd/MM/yyyy HH:mm');
+}
+
+function install4hTrigger() {
+  removeCryptoTriggers();
+  ScriptApp.newTrigger('updateCryptoMarket')
+    .timeBased()
+    .everyHours(4)
+    .create();
+  SpreadsheetApp.getActive().toast('Trigger cada 4 horas instalado', 'Crypto Tracker', 5);
+}
+
+function removeCryptoTriggers() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'updateCryptoMarket') ScriptApp.deleteTrigger(t);
+  });
+}
+
+function testBinanceConnection() {
+  const data = fetchJson_('/api/v3/ticker/price?symbol=BTCUSDT');
+  SpreadsheetApp.getUi().alert('Conexión OK. BTCUSDT = ' + data.price);
+}
+
+function round_(n, digits) {
+  if (n === null || n === undefined || !isFinite(n)) return null;
+  const p = Math.pow(10, digits || 0);
+  return Math.round(n * p) / p;
+}
+
+
+/**
+ * Actualiza la hoja Decisiones al motor v2 sin borrar la cartera ni el histórico.
+ * Combina: 40% técnico + 25% cartera + 20% P/L + 15% oportunidad.
+ */
+function upgradeDecisionEngineV2() {
+  const ss = SpreadsheetApp.getActive();
+  const dec = ss.getSheetByName('Decisiones');
+  const car = ss.getSheetByName('Cartera');
+  const cfg = ss.getSheetByName('Config');
+  if (!dec || !car || !cfg) throw new Error('Faltan hojas Decisiones, Cartera o Config.');
+
+  const lastRow = car.getLastRow();
+  if (lastRow < 2) return;
+
+  // Parámetros v2.
+  const params = [
+    ['Frescura verde', 5, 'horas', 'Datos considerados actuales'],
+    ['Frescura naranja', 12, 'horas', 'A partir de aquí revisar antes de actuar'],
+    ['Peso residual', 0.25, '%', 'Por debajo no se recomienda operar salvo motivo especial'],
+    ['P/L toma beneficio', 100, '%', 'Ganancia desde la que se evalúa asegurar beneficio'],
+    ['P/L pérdida profunda', -60, '%', 'Evita ventas mecánicas en mínimos; prioriza salida en rebote']
+  ];
+  cfg.getRange(10,1,params.length,4).setValues(params);
+  cfg.getRange(10,2,params.length,1).setFontColor('#0000ff');
+
+  const headers = [
+    'Activo','Cantidad','Valor USD','% cartera','Acción','Confianza %','Entrada objetivo','TP1','TP2','Invalidación/Stop','Horizonte','Tesis / motivo','Última revisión',
+    'Estado dato','Precio mercado','RSI 4H','RSI 1D','RSI 1W','Tend. 4H','Tend. 1D','Tend. 1W','Soporte','Resistencia','Fib 38,2','Fib 50','Fib 61,8',
+    'Score técnico','Score cartera','Score P/L','Score oportunidad','Score final','Acción motor','Override manual','Comentario motor','Fecha mercado','Edad datos h','Frescura','P/L %','Confianza coste','Tipo posición','Categoría tamaño'
+  ];
+  dec.getRange(1,1,1,headers.length).setValues([headers]);
+
+  for (let r=2; r<=lastRow; r++) {
+    dec.getRange(r,1).setFormula(`=Cartera!A${r}`);
+    dec.getRange(r,2).setFormula(`=Cartera!B${r}`);
+    dec.getRange(r,3).setFormula(`=Cartera!D${r}`);
+    dec.getRange(r,4).setFormula(`=Cartera!E${r}`);
+
+    const lookupMap = {15:2,16:4,17:5,18:6,19:7,20:8,21:9,22:10,23:11,24:12,25:13,26:14,35:19};
+    Object.keys(lookupMap).forEach(dc => {
+      const mc = lookupMap[dc];
+      const ml = columnLetter_(mc);
+      dec.getRange(r,Number(dc)).setFormula(`=IFERROR(XLOOKUP($A${r},Mercado!$A:$A,Mercado!$${ml}:$${ml},""),"")`);
+    });
+
+    dec.getRange(r,38).setFormula(`=Cartera!J${r}`);
+    dec.getRange(r,39).setFormula(`=Cartera!O${r}`);
+    dec.getRange(r,40).setFormula(`=Cartera!S${r}`);
+    dec.getRange(r,41).setFormula(`=IF($C${r}<Config!$B$5,"DUST",IF($D${r}<Config!$B$12/100,"RESIDUAL",IF($D${r}<0.02,"PEQUEÑA",IF($D${r}<0.05,"MEDIA","RELEVANTE"))))`);
+
+    dec.getRange(r,36).setFormula(`=IF(AI${r}="","",(NOW()-AI${r})*24)`);
+    dec.getRange(r,37).setFormula(`=IF(AJ${r}="","SIN FECHA",IF(AJ${r}<=Config!$B$10,"🟢 ACTUAL",IF(AJ${r}<=Config!$B$11,"🟠 REVISAR","🔴 OBSOLETO")))`);
+    dec.getRange(r,14).setFormula(`=AK${r}`);
+    dec.getRange(r,13).setFormula(`=AI${r}`);
+
+    dec.getRange(r,27).setFormula(`=IF(OR($T${r}="",$Q${r}=""),"",MAX(0,MIN(100,50+IF($U${r}="ALCISTA",12,IF($U${r}="BAJISTA",-12,0))+IF($T${r}="ALCISTA",10,IF($T${r}="BAJISTA",-10,0))+IF($S${r}="ALCISTA",6,IF($S${r}="BAJISTA",-6,0))+IF(AND($Q${r}>=40,$Q${r}<=60),8,IF(AND($Q${r}>=30,$Q${r}<40),3,IF($Q${r}>70,-7,IF($Q${r}<30,-3,0))))+IF(AND($O${r}>0,$V${r}>0,$O${r}<=$V${r}*1.03),6,0)-IF(AND($O${r}>0,$W${r}>0,$O${r}>=$W${r}*0.99),4,0))))`);
+
+    dec.getRange(r,28).setFormula(`=IF($A${r}="USDC",70,IF($D${r}="","",MAX(0,MIN(100,IF($AK${r}="DUST",50,IF($AK${r}="RESIDUAL",55,IF($AN${r}="Core",70,60)))-IF(AND($AN${r}<>"Core",$D${r}>Config!$B$6/100),25,0)+IF(AND($D${r}>=Config!$B$12/100,$D${r}<0.02),5,0)))))`);
+    dec.getRange(r,29).setFormula(`=IF($AL${r}="",50,MAX(0,MIN(100,IF($AL${r}>=Config!$B$13/100,75,IF($AL${r}>=0.30,70,IF($AL${r}>=0,62,IF($AL${r}>=-0.20,50,IF($AL${r}>=-0.60,38,25))))))))`);
+    dec.getRange(r,30).setFormula(`=IF($O${r}="","",MAX(0,MIN(100,50+IF(AND($V${r}>0,$O${r}<=$V${r}*1.03),18,0)-IF(AND($W${r}>0,$O${r}>=$W${r}*0.99),12,0)+IF(AND($Q${r}>=35,$Q${r}<=50),8,0)-IF($Q${r}>70,10,0)+IF(AND($T${r}="ALCISTA",$U${r}="ALCISTA"),8,0))))`);
+    dec.getRange(r,31).setFormula(`=IF(OR(AA${r}="",AB${r}=""),"",ROUND(AA${r}*0.40+AB${r}*0.25+AC${r}*0.20+AD${r}*0.15,0))`);
+
+    dec.getRange(r,32).setFormula(`=IF($A${r}="","",IF($AK${r}="🔴 OBSOLETO","REVISAR DATOS",IF($A${r}="USDC","MANTENER RESERVA",IF($AO${r}="DUST","MANTENER RESIDUAL",IF(AND($AL${r}<>"",$AL${r}>=Config!$B$13/100,$AA${r}>=60,$D${r}>=Config!$B$12/100),"ASEGURAR BENEFICIO",IF(AND($AL${r}<>"",$AL${r}>=0.50,$AA${r}<55,$D${r}>=Config!$B$12/100),"ASEGURAR BENEFICIO",IF($AO${r}="RESIDUAL",IF($AA${r}>=65,"MANTENER RESIDUAL","NO AUMENTAR"),IF(AND($AL${r}<>"",$AL${r}<=Config!$B$14/100,$AA${r}<50),"REDUCIR EN REBOTE",IF($AE${r}>=75,"AUMENTAR",IF($AE${r}>=62,"MANTENER",IF($AE${r}>=48,"NO AUMENTAR",IF($AE${r}>=35,"REDUCIR EN REBOTE","VENDER"))))))))))))`);
+
+    // No sobrescribir un override manual ya existente.
+    dec.getRange(r,5).setFormula(`=IF($AG${r}<>"",$AG${r},$AF${r})`);
+    dec.getRange(r,6).setFormula(`=IF($A${r}="","",MIN(0.95,MAX(0.35,0.45+IF($AK${r}="🟢 ACTUAL",0.20,IF($AK${r}="🟠 REVISAR",0.08,0))+IF(AND($S${r}=$T${r},$T${r}=$U${r}),0.12,IF(OR($S${r}=$T${r},$T${r}=$U${r}),0.06,0))+IF($AM${r}="Alta",0.10,IF($AM${r}="Media",0.06,0.02))+IF(COUNT($P${r}:$R${r})=3,0.08,0))))`);
+    dec.getRange(r,7).setFormula(`=IF($A${r}="USDC","Reserva",IF($V${r}="","",TEXT($V${r},"0.########")&" – "&TEXT(MAX($V${r},$Z${r}),"0.########")))`);
+    dec.getRange(r,8).setFormula(`=IF($W${r}="","",$W${r})`);
+    dec.getRange(r,9).setFormula(`=IF(OR($W${r}="",$O${r}=""),"",MAX($W${r}*1.05,$O${r}*1.08))`);
+    dec.getRange(r,10).setFormula(`=IF($V${r}="","",$V${r}*0.96)`);
+    dec.getRange(r,11).setFormula(`=IF($AO${r}="RESIDUAL","Semanas-meses","Días-semanas")`);
+    dec.getRange(r,34).setFormula(`=IF($A${r}="","",IF($AF${r}="REVISAR DATOS","Datos de mercado obsoletos: actualizar antes de decidir.",IF($AF${r}="MANTENER RESERVA","USDC es la reserva de liquidez; desplegar solo por tramos cuando aparezcan señales con ventaja.",IF($AF${r}="ASEGURAR BENEFICIO","La posición acumula una ganancia relevante. Mantener exposición, pero considerar una toma parcial de beneficio y elevar protección.",IF($AF${r}="REDUCIR EN REBOTE","La señal es débil. Evitar vender por impulso en mínimos; priorizar reducción parcial si recupera resistencia/objetivo.",IF($AF${r}="NO AUMENTAR","No aportar capital nuevo por ahora. Mantener bajo vigilancia hasta mejora técnica.",IF($AF${r}="MANTENER RESIDUAL","Posición de impacto bajo en la cartera; no merece operar salvo cambio de tesis.",IF($AF${r}="AUMENTAR","Señal favorable y tamaño de cartera compatible; aumentar solo dentro de la zona objetivo y por tramos.",IF($AF${r}="MANTENER","La relación entre tendencia, tamaño y P/L no justifica cambios ahora.",IF($AF${r}="VENDER","Señal muy débil y sin ventaja clara para mantener; revisar salida ordenada.",""))))))))))`);
+    dec.getRange(r,12).setFormula(`=AH${r}`);
+  }
+
+  // Limpiar filas sobrantes antiguas del motor, sin tocar encabezado.
+  if (dec.getMaxRows() > lastRow) dec.getRange(lastRow+1,1,dec.getMaxRows()-lastRow,41).clearContent();
+
+  // Formatos visibles.
+  dec.getRange(2,3,lastRow-1,1).setNumberFormat('$#,##0.00;[Red]($#,##0.00);-');
+  dec.getRange(2,4,lastRow-1,1).setNumberFormat('0.0%');
+  dec.getRange(2,6,lastRow-1,1).setNumberFormat('0%');
+  dec.getRange(2,13,lastRow-1,1).setNumberFormat('dd/MM/yyyy HH:mm');
+  dec.getRange(2,35,lastRow-1,1).setNumberFormat('dd/MM/yyyy HH:mm');
+  dec.getRange(2,36,lastRow-1,1).setNumberFormat('0.0');
+  dec.getRange(2,38,lastRow-1,1).setNumberFormat('0.0%');
+  dec.getRange(2,12,lastRow-1,1).setWrap(true);
+  dec.setFrozenRows(1);
+
+  // Oculta helpers N:AO y deja visible el panel A:M.
+  dec.showColumns(1,13);
+  dec.hideColumns(14,28);
+  dec.setColumnWidth(5,160);
+  dec.setColumnWidth(12,420);
+  dec.setColumnWidth(13,150);
+
+  // Override manual.
+  const rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['COMPRAR','AUMENTAR','MANTENER','ASEGURAR BENEFICIO','NO AUMENTAR','REDUCIR EN REBOTE','VENDER','MANTENER RESIDUAL'], true)
+    .setAllowInvalid(false).build();
+  dec.getRange(2,33,lastRow-1,1).setDataValidation(rule);
+
+  SpreadsheetApp.flush();
+  ss.toast('Motor de decisiones v2 actualizado', 'Crypto Tracker', 6);
+}
+
+function columnLetter_(n) {
+  let s = '';
+  while (n > 0) {
+    const m = (n - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+
+/**
+ * Motor de decisiones v2.1.
+ * Reparación para Google Sheets: calcula valores en Apps Script en lugar de
+ * insertar fórmulas complejas dependientes de locale.
+ */
+function repairDecisionEngineV21() {
+  recalcDecisionEngineV21_();
+  SpreadsheetApp.getActive().toast('Motor v2.1 reparado y recalculado', 'Crypto Tracker', 6);
+}
+
+function recalcDecisionEngineV21_() {
+  const ss = SpreadsheetApp.getActive();
+  const dec = ss.getSheetByName('Decisiones');
+  const car = ss.getSheetByName('Cartera');
+  const mer = ss.getSheetByName('Mercado');
+  const cfg = ss.getSheetByName('Config');
+  if (!dec || !car || !mer || !cfg) throw new Error('Faltan hojas Decisiones, Cartera, Mercado o Config.');
+
+  const carLast = car.getLastRow();
+  if (carLast < 2) return;
+
+  const carVals = car.getRange(2, 1, carLast - 1, Math.max(20, car.getLastColumn())).getValues();
+  const merLast = mer.getLastRow();
+  const merVals = merLast >= 2 ? mer.getRange(2, 1, merLast - 1, 20).getValues() : [];
+  const market = {};
+  merVals.forEach(r => {
+    const a = String(r[0] || '').trim().toUpperCase();
+    if (a) market[a] = r;
+  });
+
+  const conf = {
+    dustUsd: num_(cfg.getRange('B5').getValue(), 5),
+    maxAltPct: num_(cfg.getRange('B6').getValue(), 10) / 100,
+    freshGreenH: num_(cfg.getRange('B10').getValue(), 5),
+    freshOrangeH: num_(cfg.getRange('B11').getValue(), 12),
+    residualPct: num_(cfg.getRange('B12').getValue(), 0.25) / 100,
+    profitTakePct: num_(cfg.getRange('B13').getValue(), 100) / 100,
+    deepLossPct: num_(cfg.getRange('B14').getValue(), -60) / 100
+  };
+
+  // Preservar overrides manuales existentes (AG = 33), incluso si otras celdas tienen #ERROR!.
+  const overrides = {};
+  if (dec.getLastRow() >= 2 && dec.getLastColumn() >= 33) {
+    const ov = dec.getRange(2, 1, Math.min(carLast - 1, dec.getLastRow() - 1), 33).getValues();
+    ov.forEach(r => {
+      const a = String(r[0] || '').trim().toUpperCase();
+      const v = String(r[32] || '').trim();
+      if (a && v && v.indexOf('#') !== 0) overrides[a] = v;
+    });
+  }
+
+  // Primera pasada: valor actual usando precio de Mercado cuando exista; fallback a Cartera.
+  const rows = [];
+  let totalValue = 0;
+  carVals.forEach((c, idx) => {
+    const asset = String(c[0] || '').trim().toUpperCase();
+    if (!asset) return;
+    const qty = numOrNull_(c[1]);
+    const fallbackValue = numOrNull_(c[3]);
+    const m = market[asset] || [];
+    const marketPrice = numOrNull_(m[1]);
+    let value = fallbackValue;
+    if (qty !== null && marketPrice !== null && marketPrice >= 0) value = qty * marketPrice;
+    if (value === null) value = 0;
+    totalValue += value;
+    rows.push({idx, asset, c, m, qty, value, marketPrice});
+  });
+
+  const now = new Date();
+  const out = [];
+
+  rows.forEach(x => {
+    const c = x.c, m = x.m;
+    const asset = x.asset;
+    const qty = x.qty;
+    const value = x.value;
+    const weight = totalValue > 0 ? value / totalValue : 0;
+
+    const price = x.marketPrice;
+    const rsi4h = numOrNull_(m[3]);
+    const rsi1d = numOrNull_(m[4]);
+    const rsi1w = numOrNull_(m[5]);
+    const t4 = str_(m[6]);
+    const t1d = str_(m[7]);
+    const t1w = str_(m[8]);
+    const support = numOrNull_(m[9]);
+    const resist = numOrNull_(m[10]);
+    const fib382 = numOrNull_(m[11]);
+    const fib50 = numOrNull_(m[12]);
+    const fib618 = numOrNull_(m[13]);
+    const marketDate = dateOrNull_(m[18]);
+
+    const pl = numOrNull_(c[9]);      // Cartera J P/L %
+    const costConf = str_(c[14]);     // Cartera O
+    const positionType = str_(c[18]); // Cartera S
+
+    let ageH = null, freshness = 'SIN FECHA';
+    if (marketDate) {
+      ageH = (now.getTime() - marketDate.getTime()) / 3600000;
+      freshness = ageH <= conf.freshGreenH ? '🟢 ACTUAL' : (ageH <= conf.freshOrangeH ? '🟠 REVISAR' : '🔴 OBSOLETO');
+    }
+
+    const sizeCat = value < conf.dustUsd ? 'DUST' : (weight < conf.residualPct ? 'RESIDUAL' : (weight < 0.02 ? 'PEQUEÑA' : (weight < 0.05 ? 'MEDIA' : 'RELEVANTE')));
+
+    let tech = technicalScore_(price, rsi1d, t4, t1d, t1w, support, resist);
+    let portfolio = portfolioScore_(asset, weight, sizeCat, positionType, conf.maxAltPct);
+    let plScore = pnlScore_(pl, conf.profitTakePct);
+    let opp = opportunityScore_(price, rsi1d, t1d, t1w, support, resist);
+    let finalScore = (tech === null) ? null : Math.round(tech * 0.40 + portfolio * 0.25 + plScore * 0.20 + opp * 0.15);
+
+    let motorAction = decisionAction_(asset, freshness, sizeCat, pl, tech, finalScore, weight, conf);
+    const override = overrides[asset] || '';
+    const action = override || motorAction;
+
+    const confidence = decisionConfidence_(freshness, t4, t1d, t1w, costConf, [rsi4h,rsi1d,rsi1w]);
+    const levels = decisionLevels_(asset, action, price, support, resist, fib618);
+    const horizon = sizeCat === 'RESIDUAL' || sizeCat === 'DUST' ? 'Semanas-meses' : 'Días-semanas';
+    const thesis = decisionThesis_(motorAction, sizeCat);
+
+    // A:AO (41 columnas). Helpers quedan como valores, no fórmulas.
+    out.push([
+      asset, qty, value, weight, action, confidence,
+      levels.entry, levels.tp1, levels.tp2, levels.stop, horizon, thesis, marketDate || '', freshness,
+      price, rsi4h, rsi1d, rsi1w, t4, t1d, t1w, support, resist, fib382, fib50, fib618,
+      tech, portfolio, plScore, opp, finalScore, motorAction, override, thesis, marketDate || '', ageH, freshness,
+      pl, costConf, positionType, sizeCat
+    ]);
+  });
+
+  const headers = [
+    'Activo','Cantidad','Valor USD','% cartera','Acción','Confianza %','Entrada objetivo','TP1','TP2','Invalidación/Stop','Horizonte','Tesis / motivo','Última revisión',
+    'Estado dato','Precio mercado','RSI 4H','RSI 1D','RSI 1W','Tend. 4H','Tend. 1D','Tend. 1W','Soporte','Resistencia','Fib 38,2','Fib 50','Fib 61,8',
+    'Score técnico','Score cartera','Score P/L','Score oportunidad','Score final','Acción motor','Override manual','Comentario motor','Fecha mercado','Edad datos h','Frescura','P/L %','Confianza coste','Tipo posición','Categoría tamaño'
+  ];
+
+  // Limpiar y escribir de una sola vez evita estados intermedios con errores.
+  const maxRowsNeeded = out.length + 1;
+  if (dec.getMaxRows() < maxRowsNeeded) dec.insertRowsAfter(dec.getMaxRows(), maxRowsNeeded - dec.getMaxRows());
+  if (dec.getMaxColumns() < 41) dec.insertColumnsAfter(dec.getMaxColumns(), 41 - dec.getMaxColumns());
+  dec.getRange(1,1,Math.max(dec.getLastRow(),maxRowsNeeded),41).clearContent();
+  dec.getRange(1,1,1,headers.length).setValues([headers]);
+  if (out.length) dec.getRange(2,1,out.length,41).setValues(out);
+
+  // Formatos.
+  if (out.length) {
+    dec.getRange(2,3,out.length,1).setNumberFormat('$#,##0.00;[Red]($#,##0.00);-');
+    dec.getRange(2,4,out.length,1).setNumberFormat('0.0%');
+    dec.getRange(2,6,out.length,1).setNumberFormat('0%');
+    dec.getRange(2,13,out.length,1).setNumberFormat('dd/MM/yyyy HH:mm');
+    dec.getRange(2,35,out.length,1).setNumberFormat('dd/MM/yyyy HH:mm');
+    dec.getRange(2,36,out.length,1).setNumberFormat('0.0');
+    dec.getRange(2,38,out.length,1).setNumberFormat('0.0%');
+    dec.getRange(2,12,out.length,1).setWrap(true);
+
+    const rule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(['COMPRAR','AUMENTAR','MANTENER','ASEGURAR BENEFICIO','NO AUMENTAR','REDUCIR EN REBOTE','VENDER','MANTENER RESIDUAL'], true)
+      .setAllowInvalid(false).build();
+    dec.getRange(2,33,out.length,1).setDataValidation(rule);
+  }
+
+  dec.setFrozenRows(1);
+  dec.showColumns(1,13);
+  if (dec.getMaxColumns() >= 41) dec.hideColumns(14,28);
+  dec.setColumnWidth(5,170);
+  dec.setColumnWidth(12,430);
+  dec.setColumnWidth(13,150);
+  SpreadsheetApp.flush();
+}
+
+function technicalScore_(price, rsi, t4, t1d, t1w, support, resist) {
+  if (price === null || (!t4 && !t1d && !t1w && rsi === null)) return null;
+  let s = 50;
+  s += trendPoints_(t1w, 12);
+  s += trendPoints_(t1d, 10);
+  s += trendPoints_(t4, 6);
+  if (rsi !== null) {
+    if (rsi >= 40 && rsi <= 60) s += 8;
+    else if (rsi >= 30 && rsi < 40) s += 3;
+    else if (rsi > 70) s -= 7;
+    else if (rsi < 30) s -= 3;
+  }
+  if (support !== null && support > 0 && price <= support * 1.03) s += 6;
+  if (resist !== null && resist > 0 && price >= resist * 0.99) s -= 4;
+  return clamp_(Math.round(s), 0, 100);
+}
+
+function portfolioScore_(asset, weight, sizeCat, positionType, maxAltPct) {
+  if (asset === 'USDC') return 70;
+  let s = sizeCat === 'DUST' ? 50 : (sizeCat === 'RESIDUAL' ? 55 : (positionType === 'Core' ? 70 : 60));
+  if (positionType !== 'Core' && weight > maxAltPct) s -= 25;
+  if (weight >= 0.0025 && weight < 0.02) s += 5;
+  return clamp_(Math.round(s), 0, 100);
+}
+
+function pnlScore_(pl, profitTakePct) {
+  if (pl === null) return 50;
+  if (pl >= profitTakePct) return 75;
+  if (pl >= 0.30) return 70;
+  if (pl >= 0) return 62;
+  if (pl >= -0.20) return 50;
+  if (pl >= -0.60) return 38;
+  return 25;
+}
+
+function opportunityScore_(price, rsi, t1d, t1w, support, resist) {
+  if (price === null) return 50;
+  let s = 50;
+  if (support !== null && support > 0 && price <= support * 1.03) s += 18;
+  if (resist !== null && resist > 0 && price >= resist * 0.99) s -= 12;
+  if (rsi !== null && rsi >= 35 && rsi <= 50) s += 8;
+  if (rsi !== null && rsi > 70) s -= 10;
+  if (t1d === 'ALCISTA' && t1w === 'ALCISTA') s += 8;
+  return clamp_(Math.round(s), 0, 100);
+}
+
+function decisionAction_(asset, freshness, sizeCat, pl, tech, finalScore, weight, conf) {
+  if (freshness === '🔴 OBSOLETO' || freshness === 'SIN FECHA') return 'REVISAR DATOS';
+  if (asset === 'USDC') return 'MANTENER RESERVA';
+  if (sizeCat === 'DUST') return 'MANTENER RESIDUAL';
+  if (pl !== null && pl >= conf.profitTakePct && tech !== null && tech >= 60 && weight >= conf.residualPct) return 'ASEGURAR BENEFICIO';
+  if (pl !== null && pl >= 0.50 && tech !== null && tech < 55 && weight >= conf.residualPct) return 'ASEGURAR BENEFICIO';
+  if (sizeCat === 'RESIDUAL') return tech !== null && tech >= 65 ? 'MANTENER RESIDUAL' : 'NO AUMENTAR';
+  if (pl !== null && pl <= conf.deepLossPct && tech !== null && tech < 50) return 'REDUCIR EN REBOTE';
+  if (finalScore === null) return 'NO AUMENTAR';
+  if (finalScore >= 75) return 'AUMENTAR';
+  if (finalScore >= 62) return 'MANTENER';
+  if (finalScore >= 48) return 'NO AUMENTAR';
+  if (finalScore >= 35) return 'REDUCIR EN REBOTE';
+  return 'VENDER';
+}
+
+function decisionConfidence_(freshness, t4, t1d, t1w, costConf, rsis) {
+  let c = 0.45;
+  if (freshness === '🟢 ACTUAL') c += 0.20;
+  else if (freshness === '🟠 REVISAR') c += 0.08;
+  if (t4 && t1d && t1w && t4 === t1d && t1d === t1w) c += 0.12;
+  else if ((t4 && t1d && t4 === t1d) || (t1d && t1w && t1d === t1w)) c += 0.06;
+  if (costConf === 'Alta') c += 0.10;
+  else if (costConf === 'Media') c += 0.06;
+  else c += 0.02;
+  if (rsis.filter(x => x !== null).length === 3) c += 0.08;
+  return clamp_(c, 0.35, 0.95);
+}
+
+function decisionLevels_(asset, action, price, support, resist, fib618) {
+  if (asset === 'USDC') return {entry:'Reserva',tp1:'',tp2:'',stop:''};
+  let entry = '';
+  if (action === 'ASEGURAR BENEFICIO' || action === 'NO AUMENTAR' || action === 'REDUCIR EN REBOTE') {
+    entry = 'No aumentar';
+  } else if (support !== null && support > 0) {
+    let lo = support * 0.99, hi = support * 1.01;
+    if (fib618 !== null && price !== null && fib618 > 0 && Math.abs(fib618-price)/price <= 0.20) {
+      lo = Math.min(support, fib618);
+      hi = Math.max(support, fib618);
+    }
+    entry = fmt_(lo) + ' – ' + fmt_(hi);
+  }
+  const tp1 = resist !== null ? resist : '';
+  let tp2 = '';
+  if (resist !== null && price !== null) tp2 = Math.max(resist * 1.05, price * 1.08);
+  const stop = support !== null ? support * 0.96 : '';
+  return {entry, tp1, tp2, stop};
+}
+
+function decisionThesis_(action, sizeCat) {
+  if (action === 'REVISAR DATOS') return 'Datos de mercado obsoletos: actualizar antes de decidir.';
+  if (action === 'MANTENER RESERVA') return 'USDC es la reserva de liquidez; desplegar solo por tramos cuando aparezcan señales con ventaja.';
+  if (action === 'ASEGURAR BENEFICIO') return 'La posición acumula una ganancia relevante. Mantener exposición, pero considerar una toma parcial de beneficio y elevar protección.';
+  if (action === 'REDUCIR EN REBOTE') return 'La señal es débil. Evitar vender por impulso en mínimos; priorizar reducción parcial si recupera resistencia/objetivo.';
+  if (action === 'NO AUMENTAR') return sizeCat === 'RESIDUAL' ? 'Posición pequeña: no añadir capital nuevo salvo mejora técnica clara.' : 'No aportar capital nuevo por ahora. Mantener bajo vigilancia hasta mejora técnica.';
+  if (action === 'MANTENER RESIDUAL') return 'Posición de impacto bajo en la cartera; no merece operar salvo cambio de tesis.';
+  if (action === 'AUMENTAR') return 'Señal favorable y tamaño de cartera compatible; aumentar solo dentro de la zona objetivo y por tramos.';
+  if (action === 'MANTENER') return 'La relación entre tendencia, tamaño y P/L no justifica cambios ahora.';
+  if (action === 'VENDER') return 'Señal muy débil y sin ventaja clara para mantener; revisar salida ordenada.';
+  return '';
+}
+
+function trendPoints_(trend, points) {
+  return trend === 'ALCISTA' ? points : (trend === 'BAJISTA' ? -points : 0);
+}
+function num_(v, fallback) { const n = Number(v); return isFinite(n) ? n : fallback; }
+function numOrNull_(v) { if (v === '' || v === null || v === undefined) return null; const n = Number(v); return isFinite(n) ? n : null; }
+function str_(v) { return String(v || '').trim(); }
+function dateOrNull_(v) { if (v instanceof Date && !isNaN(v.getTime())) return v; const d = new Date(v); return isNaN(d.getTime()) ? null : d; }
+function clamp_(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function fmt_(v) { if (v === '' || v === null || v === undefined || !isFinite(Number(v))) return ''; const n=Number(v); if (Math.abs(n)>=1000) return n.toFixed(2); if (Math.abs(n)>=1) return n.toFixed(4).replace(/0+$/,'').replace(/\.$/,''); return n.toFixed(8).replace(/0+$/,'').replace(/\.$/,''); }
+
+
+/**
+ * Motor v2.2 - asignación de cartera.
+ * Añade pesos objetivo/máximo y capital sugerido. Los valores iniciales son
+ * supuestos editables, no una orden de inversión.
+ */
+function setupAllocationV22() {
+  const ss = SpreadsheetApp.getActive();
+  const car = ss.getSheetByName('Cartera');
+  const cfg = ss.getSheetByName('Config');
+  if (!car || !cfg) throw new Error('Faltan hojas Cartera o Config.');
+
+  let al = ss.getSheetByName('Asignación');
+  if (!al) al = ss.insertSheet('Asignación');
+
+  const headers = ['Activo','Peso objetivo %','Peso máximo %','Prioridad','Nota'];
+  al.getRange(1,1,1,headers.length).setValues([headers]);
+  al.setFrozenRows(1);
+
+  const defaults = {
+    'USDC':[0.50,1.00,'Reserva','Reserva mínima configurable; no es una señal técnica.'],
+    'BTC':[0.15,0.20,'Alta','Activo core; aumentar solo por tramos y con señal favorable.'],
+    'ETH':[0.075,0.10,'Alta','Activo core secundario.'],
+    'BNB':[0.05,0.07,'Media','Mantener cerca del objetivo; evitar sobreconcentración.'],
+    'ZEC':[0.02,0.03,'Media','Posición táctica; proteger ganancias si se extiende.'],
+    'TRX':[0.015,0.025,'Media','Posición secundaria.'],
+    'XRP':[0.01,0.02,'Media','Posición secundaria.'],
+    'CAKE':[0.00,0.01,'Baja','Sin objetivo de aumento mientras no mejore la señal.'],
+    'NEXO':[0.00,0.01,'Baja','Sin objetivo de aumento por defecto.'],
+    'ADA':[0.00,0.01,'Baja','Sin objetivo de aumento por defecto.'],
+    'DOT':[0.00,0.01,'Baja','Sin objetivo de aumento por defecto.']
+  };
+
+  const existing = {};
+  if (al.getLastRow() >= 2) {
+    al.getRange(2,1,al.getLastRow()-1,5).getValues().forEach(r => {
+      const a=String(r[0]||'').trim().toUpperCase();
+      if (a) existing[a]=r;
+    });
+  }
+
+  const assets = car.getRange(2,1,Math.max(0,car.getLastRow()-1),1).getDisplayValues().flat()
+    .map(x=>String(x||'').trim().toUpperCase()).filter(Boolean);
+  const rows = assets.map(a => {
+    if (existing[a]) return existing[a];
+    const d = defaults[a] || [0.00,0.005,'Baja','Sin objetivo de aumento; posición residual/táctica por defecto.'];
+    return [a,d[0],d[1],d[2],d[3]];
+  });
+  if (al.getMaxRows() < rows.length+1) al.insertRowsAfter(al.getMaxRows(), rows.length+1-al.getMaxRows());
+  if (al.getLastRow() > 1) al.getRange(2,1,al.getLastRow()-1,5).clearContent();
+  if (rows.length) al.getRange(2,1,rows.length,5).setValues(rows);
+  al.getRange(2,2,Math.max(rows.length,1),2).setNumberFormat('0.0%');
+  al.setColumnWidth(1,100); al.setColumnWidth(2,120); al.setColumnWidth(3,120); al.setColumnWidth(4,100); al.setColumnWidth(5,420);
+
+  const extra = [
+    ['Reserva USDC mínima',50,'%', 'Por debajo de este nivel no se sugiere desplegar más liquidez'],
+    ['Capital máximo por entrada',2,'%', 'Máximo orientativo por oportunidad individual'],
+    ['Toma beneficio mínima',50,'%', 'Solo se evalúa asegurar beneficio por encima de este P/L y con otra condición'],
+    ['Sobrepeso tolerado',10,'%', 'Margen relativo sobre peso máximo antes de considerar reducción']
+  ];
+  cfg.getRange(16,1,extra.length,4).setValues(extra);
+  cfg.getRange(16,2,extra.length,1).setFontColor('#0000ff');
+  ss.toast('Asignación objetivo v2.2 preparada. Revisa la hoja Asignación antes de usarla como referencia.', 'Crypto Tracker', 7);
+}
+
+function repairDecisionEngineV22() {
+  setupAllocationV22();
+  recalcDecisionEngineV22_();
+  SpreadsheetApp.getActive().toast('Motor v2.2 recalculado', 'Crypto Tracker', 6);
+}
+
+function recalcDecisionEngineV22_() {
+  const ss = SpreadsheetApp.getActive();
+  const dec = ss.getSheetByName('Decisiones');
+  const car = ss.getSheetByName('Cartera');
+  const mer = ss.getSheetByName('Mercado');
+  const cfg = ss.getSheetByName('Config');
+  let al = ss.getSheetByName('Asignación');
+  if (!al) { setupAllocationV22(); al = ss.getSheetByName('Asignación'); }
+  if (!dec || !car || !mer || !cfg || !al) throw new Error('Faltan hojas requeridas para motor v2.2.');
+
+  const carLast = car.getLastRow();
+  if (carLast < 2) return;
+  const carVals = car.getRange(2,1,carLast-1,Math.max(20,car.getLastColumn())).getValues();
+  const merVals = mer.getLastRow()>=2 ? mer.getRange(2,1,mer.getLastRow()-1,20).getValues() : [];
+  const market = {}; merVals.forEach(r=>{const a=String(r[0]||'').trim().toUpperCase(); if(a) market[a]=r;});
+
+  const alloc = {};
+  if (al.getLastRow()>=2) al.getRange(2,1,al.getLastRow()-1,5).getValues().forEach(r=>{
+    const a=String(r[0]||'').trim().toUpperCase(); if(a) alloc[a]={target:num_(r[1],0), max:num_(r[2],0.005), priority:str_(r[3]), note:str_(r[4])};
+  });
+
+  const conf = {
+    dustUsd:num_(cfg.getRange('B5').getValue(),5),
+    maxAltPct:num_(cfg.getRange('B6').getValue(),10)/100,
+    freshGreenH:num_(cfg.getRange('B10').getValue(),5),
+    freshOrangeH:num_(cfg.getRange('B11').getValue(),12),
+    residualPct:num_(cfg.getRange('B12').getValue(),0.25)/100,
+    deepLossPct:num_(cfg.getRange('B14').getValue(),-60)/100,
+    usdcMin:num_(cfg.getRange('B16').getValue(),50)/100,
+    maxEntryPct:num_(cfg.getRange('B17').getValue(),2)/100,
+    profitTakePct:num_(cfg.getRange('B18').getValue(),50)/100,
+    overweightTol:num_(cfg.getRange('B19').getValue(),10)/100
+  };
+
+  const overrides = {};
+  if (dec.getLastRow()>=2 && dec.getLastColumn()>=33) {
+    dec.getRange(2,1,Math.min(carLast-1,dec.getLastRow()-1),33).getValues().forEach(r=>{
+      const a=String(r[0]||'').trim().toUpperCase(); const v=String(r[32]||'').trim(); if(a&&v&&v.indexOf('#')!==0) overrides[a]=v;
+    });
+  }
+
+  const rows=[]; let totalValue=0, usdcValue=0;
+  carVals.forEach(c=>{
+    const asset=String(c[0]||'').trim().toUpperCase(); if(!asset) return;
+    const qty=numOrNull_(c[1]), fallbackValue=numOrNull_(c[3]), m=market[asset]||[], marketPrice=numOrNull_(m[1]);
+    let value=fallbackValue; if(qty!==null&&marketPrice!==null&&marketPrice>=0) value=qty*marketPrice; if(value===null) value=0;
+    totalValue+=value; if(asset==='USDC') usdcValue=value;
+    rows.push({asset,c,m,qty,value,marketPrice});
+  });
+  const deployable=Math.max(0, usdcValue-totalValue*conf.usdcMin);
+  const perEntryCap=totalValue*conf.maxEntryPct;
+  const now=new Date(); const out=[];
+
+  rows.forEach(x=>{
+    const c=x.c,m=x.m,asset=x.asset,qty=x.qty,value=x.value,weight=totalValue>0?value/totalValue:0;
+    const price=x.marketPrice, rsi4h=numOrNull_(m[3]), rsi1d=numOrNull_(m[4]), rsi1w=numOrNull_(m[5]);
+    const t4=str_(m[6]),t1d=str_(m[7]),t1w=str_(m[8]),support=numOrNull_(m[9]),resist=numOrNull_(m[10]);
+    const fib382=numOrNull_(m[11]),fib50=numOrNull_(m[12]),fib618=numOrNull_(m[13]),marketDate=dateOrNull_(m[18]);
+    const avgCost=numOrNull_(c[7]);
+    const pl=(price!==null&&avgCost!==null&&avgCost>0)?(price/avgCost-1):(asset==='USDC'?0:null);
+    const capitalState=str_(c[11]), costConf=str_(c[15]), positionType=str_(c[18]);
+    let ageH=null,freshness='SIN FECHA'; if(marketDate){ageH=(now-marketDate)/3600000; freshness=ageH<=conf.freshGreenH?'🟢 ACTUAL':(ageH<=conf.freshOrangeH?'🟠 REVISAR':'🔴 OBSOLETO');}
+    const sizeCat=value<conf.dustUsd?'DUST':(weight<conf.residualPct?'RESIDUAL':(weight<0.02?'PEQUEÑA':(weight<0.05?'MEDIA':'RELEVANTE')));
+    const a=alloc[asset]||{target:0,max:0.005,priority:'Baja',note:''};
+
+    const tech=technicalScore_(price,rsi1d,t4,t1d,t1w,support,resist);
+    const portfolio=portfolioScoreV22_(asset,weight,sizeCat,positionType,a.target,a.max);
+    const plScore=pnlScore_(pl,conf.profitTakePct);
+    const opp=opportunityScore_(price,rsi1d,t1d,t1w,support,resist);
+    const finalScore=tech===null?null:Math.round(tech*0.40+portfolio*0.25+plScore*0.20+opp*0.15);
+    const nearResistance = price!==null&&resist!==null&&resist>0&&price>=resist*0.985;
+    const overweight = a.max>0 && weight > a.max*(1+conf.overweightTol);
+    const underTarget = a.target>0 && weight < a.target*0.90;
+    const actionMotor=decisionActionV22_(asset,freshness,sizeCat,pl,tech,finalScore,weight,a,nearResistance,overweight,underTarget,conf);
+    const override=overrides[asset]||''; const action=override||actionMotor;
+    const confidence=decisionConfidenceV22_(freshness,t4,t1d,t1w,costConf,[rsi4h,rsi1d,rsi1w],finalScore,a.target,a.max);
+    const capital=capitalSuggestedV22_(action,weight,a.target,totalValue,deployable,perEntryCap,tech);
+    const levels=decisionLevelsV22_(asset,action,price,support,resist,fib618,capital);
+    const horizon=sizeCat==='RESIDUAL'||sizeCat==='DUST'?'Semanas-meses':'Días-semanas';
+    const thesis=decisionThesisV22_(actionMotor,sizeCat,weight,a.target,a.max,capital,pl,nearResistance);
+    const gap=a.target-weight;
+    const allocReason=allocationReasonV22_(asset,weight,a.target,a.max,deployable);
+
+    out.push([
+      asset,qty,value,weight,action,confidence,levels.entry,levels.tp1,levels.tp2,levels.stop,horizon,thesis,marketDate||'',freshness,
+      price,rsi4h,rsi1d,rsi1w,t4,t1d,t1w,support,resist,fib382,fib50,fib618,tech,portfolio,plScore,opp,finalScore,actionMotor,override,thesis,
+      marketDate||'',ageH,freshness,pl,costConf,capitalState,positionType,sizeCat,a.target,a.max,gap,capital,allocReason
+    ]);
+  });
+
+  const headers=['Activo','Cantidad','Valor USD','% cartera','Acción','Confianza %','Entrada objetivo','TP1','TP2','Invalidación/Stop','Horizonte','Tesis / motivo','Última revisión',
+    'Estado dato','Precio mercado','RSI 4H','RSI 1D','RSI 1W','Tend. 4H','Tend. 1D','Tend. 1W','Soporte','Resistencia','Fib 38,2','Fib 50','Fib 61,8',
+    'Score técnico','Score cartera','Score P/L','Score oportunidad','Score final','Acción motor','Override manual','Comentario motor','Fecha mercado','Edad datos h','Frescura','P/L %','Confianza coste','Estado capital','Tipo posición','Categoría tamaño',
+    'Peso objetivo','Peso máximo','Brecha objetivo','Capital sugerido USD','Razón asignación'];
+
+  if(dec.getMaxRows()<out.length+1) dec.insertRowsAfter(dec.getMaxRows(),out.length+1-dec.getMaxRows());
+  if(dec.getMaxColumns()<headers.length) dec.insertColumnsAfter(dec.getMaxColumns(),headers.length-dec.getMaxColumns());
+  dec.getRange(1,1,Math.max(dec.getLastRow(),out.length+1),headers.length).clearContent();
+  dec.getRange(1,1,1,headers.length).setValues([headers]); if(out.length) dec.getRange(2,1,out.length,headers.length).setValues(out);
+
+  if(out.length){
+    dec.getRange(2,3,out.length,1).setNumberFormat('$#,##0.00;[Red]($#,##0.00);-');
+    dec.getRange(2,4,out.length,1).setNumberFormat('0.0%'); dec.getRange(2,6,out.length,1).setNumberFormat('0%');
+    dec.getRange(2,13,out.length,1).setNumberFormat('dd/MM/yyyy HH:mm'); dec.getRange(2,35,out.length,1).setNumberFormat('dd/MM/yyyy HH:mm');
+    dec.getRange(2,38,out.length,1).setNumberFormat('0.0%'); dec.getRange(2,42,out.length,3).setNumberFormat('0.0%');
+    dec.getRange(2,45,out.length,1).setNumberFormat('$#,##0.00;[Red]($#,##0.00);-'); dec.getRange(2,12,out.length,1).setWrap(true);
+    const rule=SpreadsheetApp.newDataValidation().requireValueInList(['COMPRAR','AUMENTAR','MANTENER','ASEGURAR BENEFICIO','NO AUMENTAR','REDUCIR EN REBOTE','VENDER','MANTENER RESIDUAL'],true).setAllowInvalid(false).build();
+    dec.getRange(2,33,out.length,1).setDataValidation(rule);
+  }
+  dec.setFrozenRows(1); dec.showColumns(1,13); if(dec.getMaxColumns()>=47) dec.hideColumns(14,34);
+  dec.setColumnWidth(5,180); dec.setColumnWidth(12,440); dec.setColumnWidth(13,150);
+  SpreadsheetApp.flush();
+}
+
+function portfolioScoreV22_(asset,weight,sizeCat,positionType,target,maxW){
+  if(asset==='USDC') return 70;
+  let s=sizeCat==='DUST'?48:(sizeCat==='RESIDUAL'?52:(positionType==='Core'?68:58));
+  if(target>0 && weight<target*0.8) s+=12;
+  if(target>0 && weight>=target*0.9 && weight<=Math.max(maxW,target*1.1)) s+=8;
+  if(maxW>0 && weight>maxW) s-=22;
+  return clamp_(Math.round(s),0,100);
+}
+
+function decisionActionV22_(asset,freshness,sizeCat,pl,tech,finalScore,weight,a,nearResistance,overweight,underTarget,conf){
+  if(freshness==='🔴 OBSOLETO'||freshness==='SIN FECHA') return 'REVISAR DATOS';
+  if(asset==='USDC') return 'MANTENER RESERVA';
+  if(sizeCat==='DUST') return 'MANTENER RESIDUAL';
+  if(sizeCat==='RESIDUAL') return tech!==null&&tech>=70?'MANTENER RESIDUAL':'NO AUMENTAR';
+  if(pl!==null && pl<=conf.deepLossPct && tech!==null && tech<50) return 'REDUCIR EN REBOTE';
+  if(overweight && tech!==null && tech<60) return 'REDUCIR EN REBOTE';
+  if(pl!==null && pl>=conf.profitTakePct && (overweight||nearResistance) && weight>=conf.residualPct) return 'ASEGURAR BENEFICIO';
+  if(underTarget && tech!==null && tech>=62 && finalScore!==null && finalScore>=60) return 'AUMENTAR';
+  if(finalScore===null) return 'NO AUMENTAR';
+  if(finalScore>=72 && a.target>0 && weight<a.target) return 'AUMENTAR';
+  if(finalScore>=60) return 'MANTENER';
+  if(finalScore>=45) return 'NO AUMENTAR';
+  if(finalScore>=30) return 'REDUCIR EN REBOTE';
+  return (pl!==null && pl<=conf.deepLossPct) ? 'REDUCIR EN REBOTE' : 'VENDER';
+}
+
+function decisionConfidenceV22_(freshness,t4,t1d,t1w,costConf,rsis,finalScore,target,maxW){
+  let c=0.38;
+  if(freshness==='🟢 ACTUAL') c+=0.12; else if(freshness==='🟠 REVISAR') c+=0.05;
+  if(t4&&t1d&&t1w&&t4===t1d&&t1d===t1w) c+=0.10; else if((t4&&t1d&&t4===t1d)||(t1d&&t1w&&t1d===t1w)) c+=0.05;
+  if(costConf==='Alta') c+=0.06; else if(costConf==='Media') c+=0.04;
+  if(rsis.filter(x=>x!==null).length===3) c+=0.05;
+  if(finalScore!==null) c+=Math.min(0.14,Math.abs(finalScore-50)/250);
+  if(target>=0 && maxW>0) c+=0.04;
+  return clamp_(c,0.35,0.88);
+}
+
+function capitalSuggestedV22_(action,weight,target,totalValue,deployable,perEntryCap,tech){
+  if(action!=='AUMENTAR' || target<=0 || totalValue<=0 || deployable<=0) return 0;
+  const gapUsd=Math.max(0,(target-weight)*totalValue);
+  let cap=Math.min(gapUsd,perEntryCap,deployable);
+  if(tech!==null && tech<70) cap*=0.5;
+  return Math.round(cap*100)/100;
+}
+
+function decisionLevelsV22_(asset,action,price,support,resist,fib618,capital){
+  if(asset==='USDC') return {entry:'Reserva',tp1:'',tp2:'',stop:''};
+  let entry='';
+  if(action==='AUMENTAR' && support!==null){
+    let lo=support*0.99,hi=support*1.01;
+    if(fib618!==null&&price!==null&&fib618>0&&Math.abs(fib618-price)/price<=0.20){lo=Math.min(support,fib618);hi=Math.max(support,fib618);}
+    entry=fmt_(lo)+' – '+fmt_(hi)+(capital>0?' | '+Math.round(capital)+' USD máx.':'');
+  } else if(action==='MANTENER' && support!==null) entry='Mantener; aumentar solo cerca de '+fmt_(support);
+  else if(['ASEGURAR BENEFICIO','NO AUMENTAR','REDUCIR EN REBOTE'].includes(action)) entry='No aumentar';
+  const tp1=resist!==null?resist:''; const tp2=(resist!==null&&price!==null)?Math.max(resist*1.05,price*1.08):''; const stop=support!==null?support*0.96:'';
+  return {entry,tp1,tp2,stop};
+}
+
+function decisionThesisV22_(action,sizeCat,weight,target,maxW,capital,pl,nearResistance){
+  const pct=x=>(x*100).toFixed(1)+'%';
+  if(action==='MANTENER RESERVA') return 'Reserva de liquidez. El motor solo propone desplegar el exceso sobre la reserva mínima y por tramos.';
+  if(action==='AUMENTAR') return 'Posición por debajo del objetivo ('+pct(weight)+' vs '+pct(target)+') y señal suficiente. Capital sugerido por tramo: '+Math.round(capital)+' USD.';
+  if(action==='ASEGURAR BENEFICIO') return 'Ganancia relevante'+(nearResistance?' y precio cerca de resistencia':'')+'. No salir completo: considerar toma parcial y mantener exposición.';
+  if(action==='MANTENER') return target>0?'Peso actual '+pct(weight)+' frente a objetivo '+pct(target)+'. No hay ventaja suficiente para cambiar ahora.':'Mantener sin añadir; no existe objetivo de aumento configurado.';
+  if(action==='NO AUMENTAR') return 'No desplegar capital nuevo. Esperar mejora técnica o cambio de tesis.';
+  if(action==='REDUCIR EN REBOTE') return 'Riesgo/estructura desfavorable. Evitar vender por impulso en mínimos; priorizar reducción parcial en recuperación.';
+  if(action==='MANTENER RESIDUAL') return 'Impacto bajo en cartera; operar aporta poco valor salvo cambio claro de tesis.';
+  if(action==='VENDER') return 'Señal muy débil y sin razón de asignación para mantener; revisar salida ordenada.';
+  return '';
+}
+
+function allocationReasonV22_(asset,weight,target,maxW,deployable){
+  const p=x=>(x*100).toFixed(1)+'%';
+  if(asset==='USDC') return 'Liquidez disponible sobre reserva mínima: '+Math.round(deployable)+' USD.';
+  if(target<=0) return 'Sin peso objetivo de aumento. Máximo configurado '+p(maxW)+'.';
+  if(weight<target) return 'Infraponderado: actual '+p(weight)+' / objetivo '+p(target)+'.';
+  if(maxW>0&&weight>maxW) return 'Sobreponderado: actual '+p(weight)+' / máximo '+p(maxW)+'.';
+  return 'Dentro de rango: actual '+p(weight)+' / objetivo '+p(target)+' / máximo '+p(maxW)+'.';
+}
+
+
+/**
+ * Motor v2.3
+ * - AUMENTAR solo cuando el precio esta realmente dentro de la zona de entrada.
+ * - Si la tesis es favorable pero el precio esta fuera de zona: ESPERAR ENTRADA.
+ * - Mantiene pesos/overrides de v2.2.
+ * - La actualizacion de Mercado registra automaticamente un snapshot en Historial decisiones.
+ */
+function upgradeDecisionEngineV23() {
+  setupAllocationV22();
+  fixDecisionValidationV23_();
+  recalcDecisionEngineV23_();
+  SpreadsheetApp.getActive().toast('Motor v2.3 preparado y recalculado', 'Crypto Tracker', 6);
+}
+
+function recalcDecisionEngineV23_() {
+  const ss = SpreadsheetApp.getActive();
+  const dec = ss.getSheetByName('Decisiones');
+  const car = ss.getSheetByName('Cartera');
+  const mer = ss.getSheetByName('Mercado');
+  const cfg = ss.getSheetByName('Config');
+  let al = ss.getSheetByName('Asignación');
+  if (!al) { setupAllocationV22(); al = ss.getSheetByName('Asignación'); }
+  if (!dec || !car || !mer || !cfg || !al) throw new Error('Faltan hojas requeridas para motor v2.3.');
+
+  const carLast = car.getLastRow();
+  if (carLast < 2) return;
+  const carVals = car.getRange(2,1,carLast-1,Math.max(20,car.getLastColumn())).getValues();
+  const merVals = mer.getLastRow()>=2 ? mer.getRange(2,1,mer.getLastRow()-1,20).getValues() : [];
+  const market = {}; merVals.forEach(r=>{const a=String(r[0]||'').trim().toUpperCase(); if(a) market[a]=r;});
+
+  const alloc = {};
+  if (al.getLastRow()>=2) al.getRange(2,1,al.getLastRow()-1,5).getValues().forEach(r=>{
+    const a=String(r[0]||'').trim().toUpperCase();
+    if(a) alloc[a]={target:num_(r[1],0), max:num_(r[2],0.005), priority:str_(r[3]), note:str_(r[4])};
+  });
+
+  const conf = {
+    dustUsd:num_(cfg.getRange('B5').getValue(),5),
+    freshGreenH:num_(cfg.getRange('B10').getValue(),5),
+    freshOrangeH:num_(cfg.getRange('B11').getValue(),12),
+    residualPct:num_(cfg.getRange('B12').getValue(),0.25)/100,
+    deepLossPct:num_(cfg.getRange('B14').getValue(),-60)/100,
+    usdcMin:num_(cfg.getRange('B16').getValue(),50)/100,
+    maxEntryPct:num_(cfg.getRange('B17').getValue(),2)/100,
+    profitTakePct:num_(cfg.getRange('B18').getValue(),50)/100,
+    overweightTol:num_(cfg.getRange('B19').getValue(),10)/100
+  };
+
+  const overrides = {};
+  if (dec.getLastRow()>=2 && dec.getLastColumn()>=33) {
+    dec.getRange(2,1,Math.min(carLast-1,dec.getLastRow()-1),33).getValues().forEach(r=>{
+      const a=String(r[0]||'').trim().toUpperCase();
+      const v=String(r[32]||'').trim();
+      if(a&&v&&v.indexOf('#')!==0) overrides[a]=v;
+    });
+  }
+
+  const rows=[]; let totalValue=0, usdcValue=0;
+  carVals.forEach(c=>{
+    const asset=String(c[0]||'').trim().toUpperCase(); if(!asset) return;
+    const qty=numOrNull_(c[1]), fallbackValue=numOrNull_(c[3]), m=market[asset]||[], marketPrice=numOrNull_(m[1]);
+    let value=fallbackValue;
+    if(qty!==null&&marketPrice!==null&&marketPrice>=0) value=qty*marketPrice;
+    if(value===null) value=0;
+    totalValue+=value; if(asset==='USDC') usdcValue=value;
+    rows.push({asset,c,m,qty,value,marketPrice});
+  });
+  const deployable=Math.max(0, usdcValue-totalValue*conf.usdcMin);
+  const perEntryCap=totalValue*conf.maxEntryPct;
+  const now=new Date(); const out=[];
+
+  rows.forEach(x=>{
+    const c=x.c,m=x.m,asset=x.asset,qty=x.qty,value=x.value,weight=totalValue>0?value/totalValue:0;
+    const price=x.marketPrice, rsi4h=numOrNull_(m[3]), rsi1d=numOrNull_(m[4]), rsi1w=numOrNull_(m[5]);
+    const t4=str_(m[6]),t1d=str_(m[7]),t1w=str_(m[8]),support=numOrNull_(m[9]),resist=numOrNull_(m[10]);
+    const fib382=numOrNull_(m[11]),fib50=numOrNull_(m[12]),fib618=numOrNull_(m[13]),marketDate=dateOrNull_(m[18]);
+    const avgCost=numOrNull_(c[7]);
+    const pl=(price!==null&&avgCost!==null&&avgCost>0)?(price/avgCost-1):(asset==='USDC'?0:null);
+    const capitalState=str_(c[11]), costConf=str_(c[15]), positionType=str_(c[18]);
+    let ageH=null,freshness='SIN FECHA';
+    if(marketDate){ageH=(now-marketDate)/3600000; freshness=ageH<=conf.freshGreenH?'🟢 ACTUAL':(ageH<=conf.freshOrangeH?'🟠 REVISAR':'🔴 OBSOLETO');}
+    const sizeCat=value<conf.dustUsd?'DUST':(weight<conf.residualPct?'RESIDUAL':(weight<0.02?'PEQUEÑA':(weight<0.05?'MEDIA':'RELEVANTE')));
+    const a=alloc[asset]||{target:0,max:0.005,priority:'Baja',note:''};
+
+    const tech=technicalScore_(price,rsi1d,t4,t1d,t1w,support,resist);
+    const portfolio=portfolioScoreV22_(asset,weight,sizeCat,positionType,a.target,a.max);
+    const plScore=pnlScore_(pl,conf.profitTakePct);
+    const opp=opportunityScore_(price,rsi1d,t1d,t1w,support,resist);
+    const finalScore=tech===null?null:Math.round(tech*0.40+portfolio*0.25+plScore*0.20+opp*0.15);
+    const nearResistance = price!==null&&resist!==null&&resist>0&&price>=resist*0.985;
+    const overweight = a.max>0 && weight > a.max*(1+conf.overweightTol);
+    const underTarget = a.target>0 && weight < a.target*0.90;
+    const zone=entryZoneV23_(price,support,fib618);
+    const inEntryZone=zone.valid && price!==null && price>=zone.lo && price<=zone.hi;
+
+    const actionMotor=decisionActionV23_(asset,freshness,sizeCat,pl,tech,finalScore,weight,a,nearResistance,overweight,underTarget,inEntryZone,conf);
+    const override=overrides[asset]||''; const action=override||actionMotor;
+    const confidence=decisionConfidenceV22_(freshness,t4,t1d,t1w,costConf,[rsi4h,rsi1d,rsi1w],finalScore,a.target,a.max);
+    const capital=capitalSuggestedV23_(actionMotor,weight,a.target,totalValue,deployable,perEntryCap,tech);
+    const levels=decisionLevelsV23_(asset,action,price,support,resist,fib618,capital,zone);
+    const horizon=sizeCat==='RESIDUAL'||sizeCat==='DUST'?'Semanas-meses':'Días-semanas';
+    const thesis=decisionThesisV23_(actionMotor,sizeCat,weight,a.target,a.max,capital,pl,nearResistance,zone,price);
+    const gap=a.target-weight;
+    const allocReason=allocationReasonV22_(asset,weight,a.target,a.max,deployable);
+
+    out.push([
+      asset,qty,value,weight,action,confidence,levels.entry,levels.tp1,levels.tp2,levels.stop,horizon,thesis,marketDate||'',freshness,
+      price,rsi4h,rsi1d,rsi1w,t4,t1d,t1w,support,resist,fib382,fib50,fib618,tech,portfolio,plScore,opp,finalScore,actionMotor,override,thesis,
+      marketDate||'',ageH,freshness,pl,costConf,capitalState,positionType,sizeCat,a.target,a.max,gap,capital,allocReason
+    ]);
+  });
+
+  const headers=['Activo','Cantidad','Valor USD','% cartera','Acción','Confianza %','Entrada objetivo','TP1','TP2','Invalidación/Stop','Horizonte','Tesis / motivo','Última revisión',
+    'Estado dato','Precio mercado','RSI 4H','RSI 1D','RSI 1W','Tend. 4H','Tend. 1D','Tend. 1W','Soporte','Resistencia','Fib 38,2','Fib 50','Fib 61,8',
+    'Score técnico','Score cartera','Score P/L','Score oportunidad','Score final','Acción motor','Override manual','Comentario motor','Fecha mercado','Edad datos h','Frescura','P/L %','Confianza coste','Estado capital','Tipo posición','Categoría tamaño',
+    'Peso objetivo','Peso máximo','Brecha objetivo','Capital sugerido USD','Razón asignación'];
+
+  if(dec.getMaxRows()<out.length+1) dec.insertRowsAfter(dec.getMaxRows(),out.length+1-dec.getMaxRows());
+  if(dec.getMaxColumns()<headers.length) dec.insertColumnsAfter(dec.getMaxColumns(),headers.length-dec.getMaxColumns());
+  dec.getRange(1,1,Math.max(dec.getLastRow(),out.length+1),headers.length).clearContent();
+  dec.getRange(1,1,1,headers.length).setValues([headers]);
+  if(out.length) dec.getRange(2,1,out.length,headers.length).setValues(out);
+
+  if(out.length){
+    dec.getRange(2,3,out.length,1).setNumberFormat('$#,##0.00;[Red]($#,##0.00);-');
+    dec.getRange(2,4,out.length,1).setNumberFormat('0.0%');
+    dec.getRange(2,6,out.length,1).setNumberFormat('0%');
+    dec.getRange(2,13,out.length,1).setNumberFormat('dd/MM/yyyy HH:mm');
+    dec.getRange(2,35,out.length,1).setNumberFormat('dd/MM/yyyy HH:mm');
+    dec.getRange(2,38,out.length,1).setNumberFormat('0.0%');
+    dec.getRange(2,43,out.length,3).setNumberFormat('0.0%');
+    dec.getRange(2,46,out.length,1).setNumberFormat('$#,##0.00;[Red]($#,##0.00);-');
+    dec.getRange(2,12,out.length,1).setWrap(true);
+    const rule=SpreadsheetApp.newDataValidation()
+      .requireValueInList(['COMPRAR','AUMENTAR','ESPERAR ENTRADA','MANTENER','ASEGURAR BENEFICIO','NO AUMENTAR','REDUCIR EN REBOTE','VENDER','MANTENER RESIDUAL','MANTENER RESERVA','REVISAR DATOS'],true)
+      .setAllowInvalid(false).build();
+    dec.getRange(2,33,out.length,1).setDataValidation(rule);
+    dec.getRange(2,5,out.length,1).clearDataValidations();
+  }
+  dec.setFrozenRows(1); dec.showColumns(1,13); if(dec.getMaxColumns()>=47) dec.hideColumns(14,34);
+  dec.setColumnWidth(5,180); dec.setColumnWidth(12,440); dec.setColumnWidth(13,150);
+  SpreadsheetApp.flush();
+}
+
+function entryZoneV23_(price,support,fib618){
+  if(support===null||support<=0) return {valid:false,lo:null,hi:null};
+  let lo=support*0.99, hi=support*1.01;
+  if(fib618!==null&&price!==null&&fib618>0&&Math.abs(fib618-price)/price<=0.20){
+    lo=Math.min(support,fib618); hi=Math.max(support,fib618);
+  }
+  return {valid:true,lo:lo,hi:hi};
+}
+
+function decisionActionV23_(asset,freshness,sizeCat,pl,tech,finalScore,weight,a,nearResistance,overweight,underTarget,inEntryZone,conf){
+  if(freshness==='🔴 OBSOLETO'||freshness==='SIN FECHA') return 'REVISAR DATOS';
+  if(asset==='USDC') return 'MANTENER RESERVA';
+  if(sizeCat==='DUST') return 'MANTENER RESIDUAL';
+  if(sizeCat==='RESIDUAL') return tech!==null&&tech>=70?'MANTENER RESIDUAL':'NO AUMENTAR';
+  if(pl!==null && pl<=conf.deepLossPct && tech!==null && tech<50) return 'REDUCIR EN REBOTE';
+  if(overweight && tech!==null && tech<60) return 'REDUCIR EN REBOTE';
+  if(pl!==null && pl>=conf.profitTakePct && (overweight||nearResistance) && weight>=conf.residualPct) return 'ASEGURAR BENEFICIO';
+
+  const favorable = underTarget && tech!==null && tech>=62 && finalScore!==null && finalScore>=60;
+  if(favorable) return inEntryZone ? 'AUMENTAR' : 'ESPERAR ENTRADA';
+  if(finalScore===null) return 'NO AUMENTAR';
+  if(finalScore>=72 && a.target>0 && weight<a.target) return inEntryZone ? 'AUMENTAR' : 'ESPERAR ENTRADA';
+  if(finalScore>=60) return 'MANTENER';
+  if(finalScore>=45) return 'NO AUMENTAR';
+  if(finalScore>=30) return 'REDUCIR EN REBOTE';
+  return (pl!==null && pl<=conf.deepLossPct) ? 'REDUCIR EN REBOTE' : 'VENDER';
+}
+
+function capitalSuggestedV23_(action,weight,target,totalValue,deployable,perEntryCap,tech){
+  if(!['AUMENTAR','ESPERAR ENTRADA'].includes(action) || target<=0 || totalValue<=0 || deployable<=0) return 0;
+  const gapUsd=Math.max(0,(target-weight)*totalValue);
+  let cap=Math.min(gapUsd,perEntryCap,deployable);
+  if(tech!==null && tech<70) cap*=0.5;
+  return Math.round(cap*100)/100;
+}
+
+function decisionLevelsV23_(asset,action,price,support,resist,fib618,capital,zone){
+  if(asset==='USDC') return {entry:'Reserva',tp1:'',tp2:'',stop:''};
+  let entry='';
+  if(['AUMENTAR','ESPERAR ENTRADA'].includes(action) && zone && zone.valid){
+    const suffix=capital>0?' | '+Math.round(capital)+' USD máx.':'';
+    entry=fmt_(zone.lo)+' – '+fmt_(zone.hi)+suffix;
+  } else if(action==='MANTENER' && support!==null) entry='Mantener; aumentar solo cerca de '+fmt_(support);
+  else if(['ASEGURAR BENEFICIO','NO AUMENTAR','REDUCIR EN REBOTE'].includes(action)) entry='No aumentar';
+  const tp1=resist!==null?resist:'';
+  const tp2=(resist!==null&&price!==null)?Math.max(resist*1.05,price*1.08):'';
+  const stop=support!==null?support*0.96:'';
+  return {entry,tp1,tp2,stop};
+}
+
+function decisionThesisV23_(action,sizeCat,weight,target,maxW,capital,pl,nearResistance,zone,price){
+  const pct=x=>(x*100).toFixed(1)+'%';
+  if(action==='MANTENER RESERVA') return 'Reserva de liquidez. Desplegar solo el exceso sobre la reserva mínima y por tramos.';
+  if(action==='AUMENTAR') return 'Precio dentro de la zona objetivo y posición infraponderada ('+pct(weight)+' vs '+pct(target)+'). Capital máximo orientativo por tramo: '+Math.round(capital)+' USD.';
+  if(action==='ESPERAR ENTRADA') return 'Tesis favorable e infraponderada, pero el precio aun no esta en la zona objetivo'+(zone&&zone.valid?' ('+fmt_(zone.lo)+'–'+fmt_(zone.hi)+')':'')+'. No comprar a mercado; esperar entrada.';
+  if(action==='ASEGURAR BENEFICIO') return 'Ganancia relevante'+(nearResistance?' y precio cerca de resistencia':'')+'. Considerar toma parcial, no salida total.';
+  if(action==='MANTENER') return target>0?'Peso actual '+pct(weight)+' frente a objetivo '+pct(target)+'. No hay ventaja suficiente para cambiar ahora.':'Mantener sin añadir; no existe objetivo de aumento configurado.';
+  if(action==='NO AUMENTAR') return 'No desplegar capital nuevo. Esperar mejora técnica o cambio de tesis.';
+  if(action==='REDUCIR EN REBOTE') return 'Riesgo/estructura desfavorable. Evitar vender por impulso en mínimos; priorizar reducción parcial en recuperación.';
+  if(action==='MANTENER RESIDUAL') return 'Impacto bajo en cartera; operar aporta poco valor salvo cambio claro de tesis.';
+  if(action==='VENDER') return 'Señal muy débil y sin razón de asignación para mantener; revisar salida ordenada.';
+  if(action==='REVISAR DATOS') return 'Datos de mercado obsoletos o incompletos: actualizar antes de decidir.';
+  return '';
+}
+
+function fixDecisionValidationV23_(){
+  const ss=SpreadsheetApp.getActive(); const dec=ss.getSheetByName('Decisiones'); if(!dec) throw new Error('No existe Decisiones.');
+  const n=Math.max(1,dec.getLastRow()-1);
+  dec.getRange(2,5,n,1).clearDataValidations();
+  if(dec.getMaxColumns()<33) dec.insertColumnsAfter(dec.getMaxColumns(),33-dec.getMaxColumns());
+  const actions=['COMPRAR','AUMENTAR','ESPERAR ENTRADA','MANTENER','ASEGURAR BENEFICIO','NO AUMENTAR','REDUCIR EN REBOTE','VENDER','MANTENER RESIDUAL','MANTENER RESERVA','REVISAR DATOS'];
+  const rule=SpreadsheetApp.newDataValidation().requireValueInList(actions,true).setAllowInvalid(false).build();
+  dec.getRange(2,33,n,1).setDataValidation(rule);
+}
+
+function ensureDecisionHistoryV23_(){
+  const ss=SpreadsheetApp.getActive();
+  let sh=ss.getSheetByName('Historial decisiones');
+  if(!sh) sh=ss.insertSheet('Historial decisiones');
+  const headers=['Registrado','Fecha mercado','Activo','Acción','Precio USD','Cantidad','Valor USD','% cartera','Confianza','Entrada objetivo','TP1','TP2','Stop/Invalidación','Score técnico','Score final','Peso objetivo','Peso máximo','Capital sugerido USD','Tendencia 4H','Tendencia 1D','Tendencia 1W','RSI 1D','Tesis'];
+  if(sh.getLastRow()===0 || sh.getRange(1,1).getValue()!=='Registrado'){
+    sh.clear(); sh.getRange(1,1,1,headers.length).setValues([headers]); sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function appendDecisionHistoryV23_(){
+  const ss=SpreadsheetApp.getActive(); const dec=ss.getSheetByName('Decisiones'); if(!dec||dec.getLastRow()<2) return;
+  const hist=ensureDecisionHistoryV23_();
+  const vals=dec.getRange(2,1,dec.getLastRow()-1,46).getValues();
+  const now=new Date(); const batch=[];
+  vals.forEach(r=>{
+    const asset=String(r[0]||'').trim(); if(!asset) return;
+    batch.push([now,r[34]||'',asset,r[4]||'',r[14]||'',r[1]||'',r[2]||'',r[3]||'',r[5]||'',r[6]||'',r[7]||'',r[8]||'',r[9]||'',r[26]||'',r[30]||'',r[41]||'',r[42]||'',r[44]||'',r[18]||'',r[19]||'',r[20]||'',r[16]||'',r[11]||'']);
+  });
+  if(!batch.length) return;
+  const start=hist.getLastRow()+1; hist.getRange(start,1,batch.length,batch[0].length).setValues(batch);
+  hist.getRange(start,1,batch.length,2).setNumberFormat('dd/MM/yyyy HH:mm');
+  hist.getRange(start,5,batch.length,3).setNumberFormat('$#,##0.00;[Red]($#,##0.00);-');
+  hist.getRange(start,8,batch.length,2).setNumberFormat('0.0%');
+  hist.getRange(start,16,batch.length,2).setNumberFormat('0.0%');
+  hist.getRange(start,18,batch.length,1).setNumberFormat('$#,##0.00;[Red]($#,##0.00);-');
+  hist.getRange(start,23,batch.length,1).setWrap(true);
+}
+
+/**
+ * Hotfix v2.2.1
+ * Corrige las validaciones heredadas en la columna visible Accion (E).
+ * La accion visible es salida del motor y no debe tener dropdown manual.
+ * El dropdown manual queda solo en Override manual (AG / col 33).
+ */
+function fixDecisionValidationV221() {
+  const ss = SpreadsheetApp.getActive();
+  const dec = ss.getSheetByName('Decisiones');
+  if (!dec) throw new Error('No existe la hoja Decisiones.');
+
+  const lastRow = Math.max(2, dec.getLastRow());
+  const n = lastRow - 1;
+
+  // E = Accion calculada por el motor. Quitar validaciones antiguas.
+  dec.getRange(2, 5, n, 1).clearDataValidations();
+
+  // AG = Override manual. Aqui si dejamos desplegable completo.
+  if (dec.getMaxColumns() < 33) dec.insertColumnsAfter(dec.getMaxColumns(), 33 - dec.getMaxColumns());
+  const actions = [
+    'COMPRAR',
+    'AUMENTAR',
+    'MANTENER',
+    'ASEGURAR BENEFICIO',
+    'NO AUMENTAR',
+    'REDUCIR EN REBOTE',
+    'VENDER',
+    'MANTENER RESIDUAL',
+    'MANTENER RESERVA',
+    'REVISAR DATOS'
+  ];
+  const rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(actions, true)
+    .setAllowInvalid(false)
+    .build();
+  dec.getRange(2, 33, n, 1).setDataValidation(rule);
+
+  SpreadsheetApp.flush();
+  ss.toast('Validaciones v2.2.1 corregidas', 'Crypto Tracker', 5);
+}
+
+
+/**
+ * Monitoring v2.4
+ * - Alertas accionables sin correo ni operaciones automaticas.
+ * - Evaluacion del historial a +24h y +7d usando velas historicas de Binance.
+ * - Resumen de rendimiento por tipo de accion.
+ */
+function upgradeMonitoringV24() {
+  setupMonitoringV24_();
+  generateAlertsV24_();
+  evaluateDecisionHistoryV24_();
+  buildPerformanceV24_();
+  SpreadsheetApp.getActive().toast('Alertas y seguimiento v2.4 preparados', 'Crypto Tracker', 6);
+}
+
+function setupMonitoringV24_() {
+  const ss = SpreadsheetApp.getActive();
+  const cfg = ss.getSheetByName('Config');
+  if (!cfg) throw new Error('No existe la hoja Config.');
+
+  const params = [
+    ['Alerta confianza minima', 60, '%', 'Solo crea alertas operativas por encima de esta confianza'],
+    ['Cooldown alertas', 12, 'horas', 'Evita repetir la misma alerta continuamente'],
+    ['Cercania zona entrada', 3, '%', 'Genera aviso cuando ESPERAR ENTRADA queda a esta distancia o menos']
+  ];
+  cfg.getRange(21,1,params.length,4).setValues(params);
+  cfg.getRange(21,2,params.length,1).setFontColor('#0000ff');
+
+  ensureAlertsV24_();
+  ensureHistoryEvaluationColumnsV24_();
+  ensurePerformanceV24_();
+}
+
+function ensureAlertsV24_() {
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName('Alertas');
+  if (!sh) sh = ss.insertSheet('Alertas');
+  const headers = ['Fecha','Activo','Tipo alerta','Accion','Precio USD','Confianza','Capital sugerido USD','Condicion / nivel','Estado','Clave','Detalle'];
+  if (sh.getLastRow() === 0 || sh.getRange(1,1).getValue() !== 'Fecha') {
+    sh.clear();
+    sh.getRange(1,1,1,headers.length).setValues([headers]);
+  } else {
+    sh.getRange(1,1,1,headers.length).setValues([headers]);
+  }
+  sh.setFrozenRows(1);
+  sh.setColumnWidth(1,145); sh.setColumnWidth(2,80); sh.setColumnWidth(3,145); sh.setColumnWidth(4,165);
+  sh.setColumnWidth(8,210); sh.setColumnWidth(11,460);
+  return sh;
+}
+
+function ensureHistoryEvaluationColumnsV24_() {
+  const sh = ensureDecisionHistoryV23_();
+  const extra = ['Precio +24h','Retorno +24h','Evaluacion 24h','Fecha eval 24h','Precio +7d','Retorno +7d','Evaluacion 7d','Fecha eval 7d'];
+  if (sh.getMaxColumns() < 31) sh.insertColumnsAfter(sh.getMaxColumns(), 31 - sh.getMaxColumns());
+  sh.getRange(1,24,1,extra.length).setValues([extra]);
+  sh.setColumnWidth(26,150); sh.setColumnWidth(30,150);
+  return sh;
+}
+
+function ensurePerformanceV24_() {
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName('Rendimiento motor');
+  if (!sh) sh = ss.insertSheet('Rendimiento motor');
+  return sh;
+}
+
+function generateAlertsV24() {
+  setupMonitoringV24_();
+  generateAlertsV24_();
+  SpreadsheetApp.getActive().toast('Alertas recalculadas', 'Crypto Tracker', 4);
+}
+
+function generateAlertsV24_() {
+  const ss = SpreadsheetApp.getActive();
+  const dec = ss.getSheetByName('Decisiones');
+  const cfg = ss.getSheetByName('Config');
+  if (!dec || dec.getLastRow() < 2 || !cfg) return;
+  const sh = ensureAlertsV24_();
+  const now = new Date();
+  const minConfidence = num_(cfg.getRange('B21').getValue(), 60) / 100;
+  const cooldownH = num_(cfg.getRange('B22').getValue(), 12);
+  const nearEntryPct = num_(cfg.getRange('B23').getValue(), 3) / 100;
+  const rows = dec.getRange(2,1,dec.getLastRow()-1,Math.min(46,dec.getLastColumn())).getValues();
+
+  const recent = {};
+  if (sh.getLastRow() >= 2) {
+    sh.getRange(2,1,sh.getLastRow()-1,10).getValues().forEach(r => {
+      const d = dateOrNull_(r[0]); const key = String(r[9] || '');
+      if (d && key && (now-d)/3600000 <= cooldownH) recent[key] = true;
+    });
+  }
+
+  const batch = [];
+  rows.forEach(r => {
+    const asset = str_(r[0]).toUpperCase(); if (!asset) return;
+    const action = str_(r[4]); const price = numOrNull_(r[14]); const confidence = numOrNull_(r[5]);
+    const capital = numOrNull_(r[44]) || 0; const support = numOrNull_(r[21]); const fib618 = numOrNull_(r[25]);
+    const freshness = str_(r[36]); const thesis = str_(r[11]);
+    let type = '', condition = '', detail = thesis;
+
+    if (action === 'REVISAR DATOS' || freshness === '🔴 OBSOLETO') {
+      type = 'DATOS OBSOLETOS'; condition = 'Actualizar mercado antes de actuar';
+    } else if (confidence !== null && confidence < minConfidence) {
+      return;
+    } else if (action === 'AUMENTAR') {
+      type = 'ENTRADA LISTA'; condition = str_(r[6]) || 'Precio dentro de zona objetivo';
+    } else if (action === 'ESPERAR ENTRADA') {
+      const zone = entryZoneV23_(price, support, fib618);
+      if (!zone.valid || price === null || price <= zone.hi) return;
+      const gap = price / zone.hi - 1;
+      if (gap > nearEntryPct) return;
+      type = 'CERCA DE ENTRADA'; condition = 'A ' + (gap*100).toFixed(2) + '% de la zona ' + fmt_(zone.lo) + '–' + fmt_(zone.hi);
+    } else if (action === 'ASEGURAR BENEFICIO') {
+      type = 'TOMA DE BENEFICIO'; condition = 'Revisar venta parcial / proteccion';
+    } else if (action === 'REDUCIR EN REBOTE' || action === 'VENDER') {
+      type = 'RIESGO'; condition = action === 'VENDER' ? 'Revisar salida ordenada' : 'Reducir solo en recuperacion/rebote';
+    } else {
+      return;
+    }
+
+    const key = asset + '|' + type + '|' + action;
+    if (recent[key]) return;
+    recent[key] = true;
+    batch.push([now,asset,type,action,price === null ? '' : price,confidence === null ? '' : confidence,capital,condition,'ABIERTA',key,detail]);
+  });
+
+  if (!batch.length) return;
+  const start = sh.getLastRow()+1;
+  sh.getRange(start,1,batch.length,batch[0].length).setValues(batch);
+  sh.getRange(start,1,batch.length,1).setNumberFormat('dd/MM/yyyy HH:mm');
+  sh.getRange(start,5,batch.length,1).setNumberFormat('$#,##0.########');
+  sh.getRange(start,6,batch.length,1).setNumberFormat('0%');
+  sh.getRange(start,7,batch.length,1).setNumberFormat('$#,##0.00');
+  sh.getRange(start,11,batch.length,1).setWrap(true);
+}
+
+function evaluateDecisionHistoryV24() {
+  setupMonitoringV24_();
+  evaluateDecisionHistoryV24_();
+  buildPerformanceV24_();
+  SpreadsheetApp.getActive().toast('Historial 24h/7d evaluado', 'Crypto Tracker', 4);
+}
+
+function evaluateDecisionHistoryV24_() {
+  const sh = ensureHistoryEvaluationColumnsV24_();
+  if (sh.getLastRow() < 2) return;
+  const now = new Date();
+  const vals = sh.getRange(2,1,sh.getLastRow()-1,31).getValues();
+  const updates24 = [], updates7 = [];
+
+  vals.forEach((r, idx) => {
+    const row = idx + 2;
+    const recorded = dateOrNull_(r[0]); const asset = str_(r[2]).toUpperCase(); const action = str_(r[3]);
+    const basePrice = numOrNull_(r[4]);
+    if (!recorded || !asset || basePrice === null || basePrice <= 0) return;
+    const ageH = (now-recorded)/3600000;
+
+    if (ageH >= 24 && !r[25]) {
+      const target = new Date(recorded.getTime() + 24*3600000);
+      const p = historicalPriceV24_(asset,target);
+      if (p !== null) {
+        const ret = p/basePrice - 1;
+        updates24.push({row:row, values:[p,ret,evaluateSignalV24_(action,ret,'24h'),now]});
+      }
+    }
+    if (ageH >= 168 && !r[29]) {
+      const target = new Date(recorded.getTime() + 168*3600000);
+      const p = historicalPriceV24_(asset,target);
+      if (p !== null) {
+        const ret = p/basePrice - 1;
+        updates7.push({row:row, values:[p,ret,evaluateSignalV24_(action,ret,'7d'),now]});
+      }
+    }
+  });
+
+  updates24.forEach(u => sh.getRange(u.row,24,1,4).setValues([u.values]));
+  updates7.forEach(u => sh.getRange(u.row,28,1,4).setValues([u.values]));
+  if (sh.getLastRow() >= 2) {
+    sh.getRange(2,24,sh.getLastRow()-1,1).setNumberFormat('$#,##0.########');
+    sh.getRange(2,25,sh.getLastRow()-1,1).setNumberFormat('0.00%');
+    sh.getRange(2,27,sh.getLastRow()-1,1).setNumberFormat('dd/MM/yyyy HH:mm');
+    sh.getRange(2,28,sh.getLastRow()-1,1).setNumberFormat('$#,##0.########');
+    sh.getRange(2,29,sh.getLastRow()-1,1).setNumberFormat('0.00%');
+    sh.getRange(2,31,sh.getLastRow()-1,1).setNumberFormat('dd/MM/yyyy HH:mm');
+  }
+}
+
+function historicalPriceV24_(asset,targetDate) {
+  if (asset === 'USDC') return 1;
+  const symbol = resolveBinanceSymbol_(asset);
+  if (!symbol) return null;
+  try {
+    const start = targetDate.getTime() - 30*60000;
+    const end = targetDate.getTime() + 90*60000;
+    const raw = fetchJson_('/api/v3/klines?symbol=' + encodeURIComponent(symbol) + '&interval=1h&startTime=' + start + '&endTime=' + end + '&limit=3');
+    if (!raw || !raw.length) return null;
+    let best = raw[0], bestDist = Math.abs(Number(raw[0][0]) - targetDate.getTime());
+    raw.forEach(k => { const d = Math.abs(Number(k[0]) - targetDate.getTime()); if (d < bestDist) { best=k; bestDist=d; } });
+    return Number(best[4]);
+  } catch (e) {
+    return null;
+  }
+}
+
+function evaluateSignalV24_(action,ret,horizon) {
+  const threshold = horizon === '7d' ? 0.03 : 0.01;
+  if (action === 'AUMENTAR' || action === 'COMPRAR') {
+    if (ret >= threshold) return 'ACIERTO';
+    if (ret <= -threshold) return 'FALLO';
+    return 'NEUTRO';
+  }
+  if (action === 'VENDER' || action === 'REDUCIR EN REBOTE') {
+    if (ret <= -threshold) return 'ACIERTO';
+    if (ret >= threshold) return 'FALLO';
+    return 'NEUTRO';
+  }
+  if (action === 'ESPERAR ENTRADA' || action === 'NO AUMENTAR') {
+    if (ret <= -threshold) return 'ACIERTO / EVITO COMPRA';
+    if (ret >= threshold) return 'OPORTUNIDAD PERDIDA';
+    return 'NEUTRO';
+  }
+  if (action === 'ASEGURAR BENEFICIO') {
+    if (ret <= 0) return 'PROTEGIDO';
+    if (ret >= threshold) return 'SUBIO DESPUES';
+    return 'NEUTRO';
+  }
+  if (action === 'MANTENER' || action === 'MANTENER RESIDUAL') {
+    if (ret >= threshold) return 'SUBIO';
+    if (ret <= -threshold) return 'BAJO';
+    return 'NEUTRO';
+  }
+  return 'NO EVALUABLE';
+}
+
+function buildPerformanceV24_() {
+  const ss = SpreadsheetApp.getActive();
+  const hist = ensureHistoryEvaluationColumnsV24_();
+  const out = ensurePerformanceV24_();
+  const headers = ['Accion','Muestras 24h','Aciertos 24h','Tasa acierto 24h','Retorno medio 24h','Muestras 7d','Aciertos 7d','Tasa acierto 7d','Retorno medio 7d'];
+  const stats = {};
+  if (hist.getLastRow() >= 2) {
+    hist.getRange(2,1,hist.getLastRow()-1,31).getValues().forEach(r => {
+      const action = str_(r[3]); if (!action) return;
+      if (!stats[action]) stats[action]={n24:0,win24:0,sum24:0,n7:0,win7:0,sum7:0};
+      const ret24=numOrNull_(r[24]), ev24=str_(r[25]);
+      const ret7=numOrNull_(r[28]), ev7=str_(r[29]);
+      if (ret24 !== null && ev24) { stats[action].n24++; stats[action].sum24+=ret24; if (isPositiveEvaluationV24_(ev24)) stats[action].win24++; }
+      if (ret7 !== null && ev7) { stats[action].n7++; stats[action].sum7+=ret7; if (isPositiveEvaluationV24_(ev7)) stats[action].win7++; }
+    });
+  }
+  const rows = Object.keys(stats).sort().map(a => {
+    const s=stats[a];
+    return [a,s.n24,s.win24,s.n24?s.win24/s.n24:'',s.n24?s.sum24/s.n24:'',s.n7,s.win7,s.n7?s.win7/s.n7:'',s.n7?s.sum7/s.n7:''];
+  });
+  out.clear();
+  out.getRange(1,1,1,headers.length).setValues([headers]);
+  if (rows.length) out.getRange(2,1,rows.length,headers.length).setValues(rows);
+  out.setFrozenRows(1);
+  if (rows.length) {
+    out.getRange(2,4,rows.length,2).setNumberFormat('0.0%');
+    out.getRange(2,8,rows.length,2).setNumberFormat('0.0%');
+  }
+  out.setColumnWidth(1,180);
+}
+
+function isPositiveEvaluationV24_(v) {
+  return ['ACIERTO','ACIERTO / EVITO COMPRA','PROTEGIDO','SUBIO'].indexOf(v) >= 0;
+}
+
+
+/**
+ * v2.5 - propuestas cuantificadas + radar externo.
+ * No ejecuta ordenes. Solo propone porcentajes, importes y unidades.
+ */
+function upgradeTradingProposalsV25() {
+  setupTradingConfigV25_();
+  augmentDecisionProposalsV25_();
+  scanExternalRadarV25();
+  SpreadsheetApp.getActive().toast('v2.5: propuestas cuantificadas y radar preparados', 'Crypto Tracker', 7);
+}
+
+function setupTradingConfigV25_() {
+  const ss=SpreadsheetApp.getActive();
+  const cfg=ss.getSheetByName('Config'); if(!cfg) throw new Error('No existe Config.');
+  const labels=cfg.getRange(1,1,Math.max(cfg.getLastRow(),1),1).getDisplayValues().flat().map(x=>String(x||'').trim());
+  const settings=[
+    ['Venta parcial base',10,'%', 'Porcentaje inicial cuando se propone asegurar beneficio'],
+    ['Venta parcial fuerte',25,'%', 'Porcentaje orientativo para reducir una posicion deteriorada'],
+    ['Radar: maximo nueva crypto',1,'%', 'Maximo del patrimonio para el primer tramo en un activo nuevo'],
+    ['Radar: candidatos visibles',8,'n', 'Numero maximo de oportunidades externas mostradas'],
+    ['Radar: volumen minimo 24h',20000000,'USD', 'Filtro de liquidez por quoteVolume USDT']
+  ];
+  let row=Math.max(cfg.getLastRow()+1,24);
+  settings.forEach(s=>{
+    const i=labels.indexOf(s[0]);
+    if(i<0){ cfg.getRange(row,1,1,4).setValues([s]); cfg.getRange(row,2).setFontColor('#0000ff'); row++; }
+  });
+}
+
+function configValueV25_(label, fallback) {
+  const cfg=SpreadsheetApp.getActive().getSheetByName('Config'); if(!cfg) return fallback;
+  const vals=cfg.getRange(1,1,Math.max(cfg.getLastRow(),1),2).getValues();
+  for(let i=0;i<vals.length;i++) if(String(vals[i][0]||'').trim()===label) return num_(vals[i][1],fallback);
+  return fallback;
+}
+
+function augmentDecisionProposalsV25_() {
+  const ss=SpreadsheetApp.getActive();
+  const dec=ss.getSheetByName('Decisiones'); if(!dec||dec.getLastRow()<2) return;
+  const headers=dec.getRange(1,1,1,dec.getLastColumn()).getDisplayValues()[0];
+  const ensure=(name)=>{let i=headers.indexOf(name); if(i>=0) return i+1; dec.insertColumnAfter(dec.getLastColumn()); const c=dec.getLastColumn(); dec.getRange(1,c).setValue(name); headers.push(name); return c;};
+  const cPct=ensure('Propuesta %');
+  const cUsd=ensure('Propuesta USD');
+  const cUnits=ensure('Propuesta unidades');
+  const cType=ensure('Tipo propuesta');
+  const cText=ensure('Propuesta operativa');
+
+  const h=dec.getRange(1,1,1,dec.getLastColumn()).getDisplayValues()[0];
+  const idx=(n)=>h.indexOf(n);
+  const vals=dec.getRange(2,1,dec.getLastRow()-1,dec.getLastColumn()).getValues();
+  const baseSell=configValueV25_('Venta parcial base',10)/100;
+  const strongSell=configValueV25_('Venta parcial fuerte',25)/100;
+  const out=[];
+  vals.forEach(r=>{
+    const action=str_(r[idx('Acción')]); const asset=str_(r[idx('Activo')]);
+    const qty=numOrNull_(r[idx('Cantidad')])||0, value=numOrNull_(r[idx('Valor USD')])||0, price=numOrNull_(r[idx('Precio mercado')])||0;
+    const weight=numOrNull_(r[idx('% cartera')])||0, maxW=numOrNull_(r[idx('Peso máximo')])||0;
+    const capital=numOrNull_(r[idx('Capital sugerido USD')])||0, state=str_(r[idx('Estado capital')]);
+    const rsi=numOrNull_(r[idx('RSI 1D')]), resist=numOrNull_(r[idx('Resistencia')]); const score=numOrNull_(r[idx('Score final')]);
+    let pct=0,usd=0,units=0,type='SIN ACCION',text='Mantener sin operar.';
+    if(action==='ASEGURAR BENEFICIO'){
+      pct=/SOLO GANANCIAS/i.test(state)?baseSell:Math.max(baseSell,0.15);
+      if((maxW>0&&weight>maxW)||(rsi!==null&&rsi>=65)||(price>0&&resist!==null&&price>=resist*0.985)) pct+=0.05;
+      pct=Math.min(0.25,pct); usd=value*pct; units=qty*pct; type='VENTA PARCIAL';
+      text='Tomar '+Math.round(pct*100)+'% de beneficio: vender aprox. '+round_(units,8)+' '+asset+' (~'+Math.round(usd)+' USD). Mantener el resto.';
+    } else if(action==='REDUCIR EN REBOTE'){
+      pct=strongSell; if(score!==null&&score<35) pct=Math.min(0.40,pct+0.10); if(/SOLO GANANCIAS/i.test(state)) pct=Math.min(pct,0.20);
+      usd=value*pct; units=qty*pct; type='VENTA PARCIAL';
+      text='En rebote, reducir aprox. '+Math.round(pct*100)+'%: '+round_(units,8)+' '+asset+' (~'+Math.round(usd)+' USD).';
+    } else if(action==='VENDER'){
+      pct=1; usd=value; units=qty; type='VENTA'; text='Salida completa orientativa: '+round_(units,8)+' '+asset+' (~'+Math.round(usd)+' USD).';
+    } else if(action==='AUMENTAR'){
+      usd=capital; units=price>0?usd/price:0; type='COMPRA'; text=usd>0?'Comprar primer tramo de ~'+Math.round(usd)+' USD ('+round_(units,8)+' '+asset+' al precio actual aprox.).':'Senal de aumento sin capital sugerido.';
+    } else if(action==='ESPERAR ENTRADA'){
+      usd=capital; const entry=str_(r[idx('Entrada objetivo')]); const mid=parseEntryMidV25_(entry); units=mid>0?usd/mid:0; type='COMPRA PLANIFICADA';
+      text=usd>0?'Si entra en zona, comprar ~'+Math.round(usd)+' USD'+(units>0?' (~'+round_(units,8)+' '+asset+')':'')+'. No comprar a mercado.':'Esperar la zona objetivo antes de comprar.';
+    } else if(action==='NO AUMENTAR') { type='ESPERAR'; text='No comprar ahora. Mantener la posicion y reevaluar con mejora tecnica.'; }
+    else if(action==='MANTENER') { type='MANTENER'; text='Mantener. Sin compra ni venta propuesta ahora.'; }
+    else if(action==='MANTENER RESERVA') { type='RESERVA'; text='Mantener liquidez en reserva; no desplegar salvo oportunidad valida.'; }
+    else if(action==='MANTENER RESIDUAL') { type='MANTENER'; text='Mantener residual; el impacto de operar es bajo.'; }
+    else if(action==='REVISAR DATOS') { type='ESPERAR'; text='No operar hasta actualizar datos.'; }
+    out.push([pct,usd,units,type,text]);
+  });
+  if(out.length){
+    dec.getRange(2,cPct,out.length,1).setValues(out.map(x=>[x[0]])).setNumberFormat('0%');
+    dec.getRange(2,cUsd,out.length,1).setValues(out.map(x=>[x[1]])).setNumberFormat('$#,##0.00;[Red]($#,##0.00);-');
+    dec.getRange(2,cUnits,out.length,1).setValues(out.map(x=>[x[2]])).setNumberFormat('0.########');
+    dec.getRange(2,cType,out.length,1).setValues(out.map(x=>[x[3]]));
+    dec.getRange(2,cText,out.length,1).setValues(out.map(x=>[x[4]])).setWrap(true);
+    dec.setColumnWidth(cText,480);
+  }
+}
+
+function parseEntryMidV25_(s){
+  const m=String(s||'').replace(/,/g,'.').match(/([0-9.]+)\s*[–-]\s*([0-9.]+)/);
+  if(!m) return 0; const a=Number(m[1]),b=Number(m[2]); return Number.isFinite(a)&&Number.isFinite(b)?(a+b)/2:0;
+}
+
+function scanExternalRadarV25() {
+  setupTradingConfigV25_();
+  const ss=SpreadsheetApp.getActive(); const car=ss.getSheetByName('Cartera'); if(!car) return;
+  let sh=ss.getSheetByName('Radar'); if(!sh) sh=ss.insertSheet('Radar');
+  const held=new Set(car.getRange(2,1,Math.max(0,car.getLastRow()-1),1).getDisplayValues().flat().map(x=>String(x||'').trim().toUpperCase()).filter(Boolean));
+  const total=car.getLastRow()>=2?car.getRange(2,4,car.getLastRow()-1,1).getValues().flat().reduce((s,v)=>s+(Number(v)||0),0):0;
+  const usdcRow=car.getRange(2,1,Math.max(0,car.getLastRow()-1),4).getValues().find(r=>String(r[0]||'').toUpperCase()==='USDC');
+  const usdc=usdcRow?Number(usdcRow[3])||0:0; const reserve=total*0.50; const deployable=Math.max(0,usdc-reserve);
+  const maxNewPct=configValueV25_('Radar: maximo nueva crypto',1)/100; const maxVisible=Math.round(configValueV25_('Radar: candidatos visibles',8)); const minVol=configValueV25_('Radar: volumen minimo 24h',20000000);
+  const ex=fetchJson_('/api/v3/exchangeInfo'); const tradable={};
+  (ex.symbols||[]).forEach(s=>{if(s.quoteAsset==='USDT'&&s.status==='TRADING'&&s.isSpotTradingAllowed!==false)tradable[s.symbol]=s.baseAsset;});
+  const tickers=fetchJson_('/api/v3/ticker/24hr');
+  const banned=new Set(['USDC','FDUSD','TUSD','USDP','DAI','EUR','EURT','TRY','BRL','BIDR','AEUR','PAXG','XAUT']);
+  const candidates=(tickers||[]).map(t=>({t,asset:tradable[t.symbol]})).filter(x=>x.asset&&!held.has(x.asset)&&!banned.has(x.asset)&&!/(UP|DOWN|BULL|BEAR)$/.test(x.asset)&&Number(x.t.quoteVolume)>=minVol).sort((a,b)=>Number(b.t.quoteVolume)-Number(a.t.quoteVolume)).slice(0,24);
+  const rows=[]; const now=new Date();
+  for(let i=0;i<candidates.length&&rows.length<maxVisible;i++){
+    const {t,asset}=candidates[i]; const symbol=t.symbol;
+    try{
+      const k4=getKlines_(symbol,'4h',220), kd=getKlines_(symbol,'1d',240), kw=getKlines_(symbol,'1w',100);
+      if(k4.length<60||kd.length<100||kw.length<30) continue;
+      const price=Number(t.lastPrice), r4=rsi_(closes_(k4),14), rd=rsi_(closes_(kd),14), rw=rsi_(closes_(kw),14);
+      const tr4=trend_(closes_(k4)), trd=trend_(closes_(kd)), trw=trend_(closes_(kw)); const sr=supportResistance_(kd,price,80); const fib=fibonacci_(kd,120);
+      const tech=technicalScore_(price,rd,tr4,trd,trw,sr.support,sr.resistance); const opp=opportunityScore_(price,rd,trd,trw,sr.support,sr.resistance);
+      if(tech===null) continue; const volScore=Math.max(60,100-i*2); const score=Math.round(tech*0.55+opp*0.30+volScore*0.15);
+      const zone=entryZoneV23_(price,sr.support,fib.f618); const inZone=zone.valid&&price>=zone.lo&&price<=zone.hi;
+      let action=score>=72?(inZone?'COMPRAR':'ESPERAR ENTRADA'):(score>=62?'VIGILAR':'DESCARTAR'); if(action==='DESCARTAR') continue;
+      let cap=Math.min(total*maxNewPct,deployable/Math.max(1,maxVisible)); if(score<72) cap*=0.5; cap=Math.round(cap*100)/100;
+      const entry=zone.valid?fmt_(zone.lo)+' – '+fmt_(zone.hi):''; const mid=zone.valid?(zone.lo+zone.hi)/2:price; const units=mid>0?cap/mid:0;
+      const tp1=sr.resistance||''; const tp2=sr.resistance?Math.max(sr.resistance*1.05,price*1.08):''; const stop=sr.support?sr.support*0.96:'';
+      rows.push([asset,symbol,price,Number(t.priceChangePercent)/100,Number(t.quoteVolume),r4,rd,rw,tr4,trd,trw,sr.support,sr.resistance,entry,tech,opp,score,action,cap,units,tp1,tp2,stop,now,'Binance Market Data']);
+    }catch(e){}
+    Utilities.sleep(80);
+  }
+  const headers=['Activo','Par','Precio','Cambio 24h %','Volumen 24h USD','RSI 4H','RSI 1D','RSI 1W','Tend. 4H','Tend. 1D','Tend. 1W','Soporte','Resistencia','Entrada objetivo','Score técnico','Score oportunidad','Score final','Acción','Capital sugerido USD','Unidades sugeridas','TP1','TP2','Stop','Fecha','Fuente'];
+  sh.clearContents(); sh.getRange(1,1,1,headers.length).setValues([headers]); if(rows.length) sh.getRange(2,1,rows.length,headers.length).setValues(rows);
+  sh.setFrozenRows(1); if(rows.length){sh.getRange(2,3,rows.length,1).setNumberFormat('$#,##0.########');sh.getRange(2,4,rows.length,1).setNumberFormat('0.00%');sh.getRange(2,5,rows.length,1).setNumberFormat('$#,##0');sh.getRange(2,19,rows.length,1).setNumberFormat('$#,##0.00');sh.getRange(2,24,rows.length,1).setNumberFormat('dd/MM/yyyy HH:mm');}
+  sh.autoResizeColumns(1,headers.length);
+}
+
+// ============================================================================
+// v2.6 - Sincronizacion on-chain (MetaMask/BSC + Terra/Keplr)
+// ============================================================================
+
+const CT_WALLET = {
+  SHEET_WALLETS: 'Wallets',
+  SHEET_TOKENS: 'Wallet tokens',
+  SHEET_BALANCES: 'On-chain balances',
+  SHEET_RECON: 'Conciliacion on-chain',
+  BSC_RPC: 'https://bsc-dataseed.bnbchain.org',
+  TERRA_LCD: 'https://terra-api.polkachu.com',
+  TERRA_CLASSIC_LCD: 'https://terra-classic-lcd.publicnode.com',
+  TERRA_LCD_FALLBACKS: [
+    'https://terra-lcd.publicnode.com',
+    'https://rest.lavenderfive.com:443/terra2',
+    'https://terra-lcd.stakely.io',
+    'https://lcd-terra.tfl.foundation'
+  ],
+  TERRA_CLASSIC_LCD_FALLBACKS: [
+    'https://columbus-lcd.terra.dev'
+  ],
+  METAMASK: '0x3e3D0da8344dF1896258B3cB15013C7110aEa510',
+  TERRA: 'terra185wweead5yaax34u3q8zegewsc0danw62g28zn'
+};
+
+function repairV262() {
+  return repairV263();
+}
+
+function repairV263() {
+  const ss = SpreadsheetApp.getActive();
+  setupWalletSheetsV26_(ss);
+  recalcDecisionEngineV23_();
+  augmentDecisionProposalsV25_();
+  syncOnChainWalletsV26_({ silent: true });
+  scanExternalRadarV25();
+  SpreadsheetApp.flush();
+  ss.toast('v2.6.3 reparada: Terra con fallback automatico', 'Crypto Tracker', 6);
+}
+
+function upgradeOnChainSyncV26() {
+  const ss = SpreadsheetApp.getActive();
+  setupWalletSheetsV26_(ss);
+  syncOnChainWalletsV26();
+  ss.toast('Sincronizacion on-chain v2.6 configurada', 'Crypto Tracker', 5);
+}
+
+function syncOnChainWalletsV26() {
+  return syncOnChainWalletsV26_({ silent: false });
+}
+
+function syncOnChainWalletsV26_(opts) {
+  opts = opts || {};
+  const ss = SpreadsheetApp.getActive();
+  setupWalletSheetsV26_(ss);
+
+  const wallets = readTableObjectsV26_(ss.getSheetByName(CT_WALLET.SHEET_WALLETS));
+  const tokens = readTableObjectsV26_(ss.getSheetByName(CT_WALLET.SHEET_TOKENS));
+  const output = [];
+  const now = new Date();
+
+  wallets.filter(w => isYesV26_(w['Activa'])).forEach(w => {
+    const name = String(w['Wallet'] || '').trim();
+    const chain = String(w['Red'] || '').trim().toUpperCase();
+    const address = String(w['Direccion publica'] || '').trim();
+    const endpoint = String(w['Endpoint'] || '').trim();
+    if (!name || !chain || !address || !endpoint) return;
+
+    try {
+      if (chain === 'BSC') {
+        const bnb = evmNativeBalanceV26_(endpoint, address);
+        output.push(makeOnChainRowV26_(name, chain, address, 'BNB', bnb, 0, 0, bnb, 'RPC publico BSC', now, 'Saldo nativo'));
+
+        tokens.filter(t => String(t['Wallet'] || '').trim() === name && String(t['Red'] || '').trim().toUpperCase() === chain && isYesV26_(t['Activa']))
+          .forEach(t => {
+            const type = String(t['Tipo'] || '').trim().toUpperCase();
+            if (type !== 'BEP20') return;
+            const contract = String(t['Contrato / denom'] || '').trim();
+            const asset = String(t['Activo'] || '').trim().toUpperCase();
+            const decimals = Number(t['Decimales'] || 18);
+            if (!contract || !asset) return;
+            try {
+              const bal = evmTokenBalanceV26_(endpoint, address, contract, decimals);
+              output.push(makeOnChainRowV26_(name, chain, address, asset, bal, 0, 0, bal, 'RPC publico BSC / balanceOf', now,
+                isYesV26_(t['Auto-aplicar']) ? 'Auto-aplicable' : 'Solo saldo libre; no incluye staking/pools'));
+            } catch (e) {
+              output.push(makeOnChainRowV26_(name, chain, address, asset, '', '', '', '', 'ERROR', now, e.message));
+            }
+          });
+      } else if (chain === 'TERRA' || chain === 'TERRA_CLASSIC') {
+        const terraResult = terraBalancesV263_(endpoint, address, chain);
+        terraResult.rows.forEach(r => output.push(makeOnChainRowV26_(name, chain, address, r.asset, r.liquid, r.staked, r.rewards, r.total, 'Terra LCD · ' + terraHostV263_(terraResult.endpoint), now, r.note + ' | endpoint=' + terraResult.endpoint)));
+      }
+    } catch (e) {
+      output.push(makeOnChainRowV26_(name, chain, address, 'ERROR', '', '', '', '', 'ERROR', now, e.message));
+    }
+  });
+
+  writeOnChainBalancesV26_(ss, output);
+  applySafeOnChainBalancesV26_(ss, output, tokens);
+  buildOnChainReconciliationV26_(ss, output);
+  SpreadsheetApp.flush();
+
+  if (!opts.silent) ss.toast('Wallets on-chain actualizadas', 'Crypto Tracker', 4);
+  return output;
+}
+
+function setupWalletSheetsV26_(ss) {
+  const wallets = ensureSheetV26_(ss, CT_WALLET.SHEET_WALLETS);
+  const walletHeaders = ['Wallet', 'Red', 'Direccion publica', 'Endpoint', 'Activa', 'Ultima sync', 'Estado', 'Notas'];
+  if (wallets.getLastRow() < 2 || String(wallets.getRange(1, 1).getValue()).trim() !== 'Wallet') {
+    wallets.clear();
+    wallets.getRange(1, 1, 1, walletHeaders.length).setValues([walletHeaders]);
+    wallets.getRange(2, 1, 3, walletHeaders.length).setValues([
+      ['MetaMask principal', 'BSC', CT_WALLET.METAMASK, CT_WALLET.BSC_RPC, 'SI', '', 'CONFIGURADA', 'BNB + tokens BEP-20 configurados. PancakeSwap usa esta wallet.'],
+      ['Keplr / Terra', 'TERRA', CT_WALLET.TERRA, CT_WALLET.TERRA_LCD, 'SI', '', 'CONFIGURADA', 'Terra phoenix-1: LUNA, staking y rewards.'],
+      ['Keplr / Terra Classic', 'TERRA_CLASSIC', CT_WALLET.TERRA, CT_WALLET.TERRA_CLASSIC_LCD, 'SI', '', 'CONFIGURADA', 'Terra Classic columbus-5: LUNC, USTC, staking y rewards.']
+    ]);
+  }
+  // v2.6.2: reparar endpoints Terra antiguos/no resolubles sin pisar endpoints personalizados validos.
+  if (wallets.getLastRow() > 1) {
+    const wr = wallets.getRange(2, 1, wallets.getLastRow() - 1, walletHeaders.length).getValues();
+    let changed = false;
+    wr.forEach(r => {
+      const chain = String(r[1] || '').trim().toUpperCase();
+      const ep = String(r[3] || '').trim();
+      if (chain === 'TERRA' && (!ep || /phoenix-lcd\.terra\.dev|lcd-terra\.tfl\.foundation/i.test(ep))) { r[3] = CT_WALLET.TERRA_LCD; changed = true; }
+      if (chain === 'TERRA_CLASSIC' && (!ep || /columbus-lcd\.terra\.dev/i.test(ep))) { r[3] = CT_WALLET.TERRA_CLASSIC_LCD; changed = true; }
+    });
+    if (changed) wallets.getRange(2, 1, wr.length, walletHeaders.length).setValues(wr);
+  }
+  styleConfigSheetV26_(wallets, walletHeaders.length);
+
+  const tokens = ensureSheetV26_(ss, CT_WALLET.SHEET_TOKENS);
+  const tokenHeaders = ['Wallet', 'Red', 'Activo', 'Tipo', 'Contrato / denom', 'Decimales', 'Activa', 'Auto-aplicar', 'Ubicacion destino', 'Notas'];
+  if (tokens.getLastRow() < 2 || String(tokens.getRange(1, 1).getValue()).trim() !== 'Wallet') {
+    tokens.clear();
+    tokens.getRange(1, 1, 1, tokenHeaders.length).setValues([tokenHeaders]);
+    tokens.getRange(2, 1, 4, tokenHeaders.length).setValues([
+      ['MetaMask principal', 'BSC', 'CAKE', 'BEP20', '0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82', 18, 'SI', 'NO', 'PancakeSwap', 'balanceOf solo ve CAKE libre. No sustituye CAKE staked/pools.'],
+      ['Keplr / Terra', 'TERRA', 'LUNA', 'NATIVE', 'uluna', 6, 'SI', 'SI', 'Keplr', 'Incluye liquido + staking + rewards claimables.'],
+      ['Keplr / Terra Classic', 'TERRA_CLASSIC', 'LUNC', 'NATIVE', 'uluna', 6, 'SI', 'SI', 'Keplr', 'Incluye liquido + staking + rewards claimables.'],
+      ['Keplr / Terra Classic', 'TERRA_CLASSIC', 'USTC', 'NATIVE', 'uusd', 6, 'SI', 'SI', 'Keplr', 'Saldo bank; normalmente sin staking.']
+    ]);
+  }
+  styleConfigSheetV26_(tokens, tokenHeaders.length);
+
+  const balances = ensureSheetV26_(ss, CT_WALLET.SHEET_BALANCES);
+  const balanceHeaders = ['Wallet', 'Red', 'Direccion', 'Activo', 'Disponible', 'Staking', 'Rewards pendientes', 'Total on-chain', 'Fuente', 'Fecha sync', 'Estado / notas'];
+  if (balances.getLastRow() < 1 || String(balances.getRange(1, 1).getValue()).trim() !== 'Wallet') {
+    balances.clear();
+    balances.getRange(1, 1, 1, balanceHeaders.length).setValues([balanceHeaders]);
+  }
+  styleConfigSheetV26_(balances, balanceHeaders.length);
+
+  const recon = ensureSheetV26_(ss, CT_WALLET.SHEET_RECON);
+  const reconHeaders = ['Activo', 'Wallet/red', 'Total on-chain', 'Cantidad registrada ubicacion', 'Delta', 'Auto-aplicar', 'Estado', 'Ultima sync', 'Notas'];
+  if (recon.getLastRow() < 1 || String(recon.getRange(1, 1).getValue()).trim() !== 'Activo') {
+    recon.clear();
+    recon.getRange(1, 1, 1, reconHeaders.length).setValues([reconHeaders]);
+  }
+  styleConfigSheetV26_(recon, reconHeaders.length);
+}
+
+function evmNativeBalanceV26_(rpc, address) {
+  const hex = rpcCallV26_(rpc, 'eth_getBalance', [address, 'latest']);
+  return hexAmountV26_(hex, 18);
+}
+
+function evmTokenBalanceV26_(rpc, address, contract, decimals) {
+  const clean = address.toLowerCase().replace(/^0x/, '');
+  const data = '0x70a08231' + clean.padStart(64, '0');
+  const hex = rpcCallV26_(rpc, 'eth_call', [{ to: contract, data: data }, 'latest']);
+  return hexAmountV26_(hex, decimals);
+}
+
+function rpcCallV26_(rpc, method, params) {
+  const res = UrlFetchApp.fetch(rpc, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify({ jsonrpc: '2.0', id: 1, method: method, params: params }),
+    muteHttpExceptions: true,
+    headers: { 'User-Agent': CT.USER_AGENT || 'CryptoTrackerSheet/2.6' }
+  });
+  const code = res.getResponseCode();
+  const txt = res.getContentText();
+  if (code < 200 || code >= 300) throw new Error('RPC HTTP ' + code + ': ' + txt.slice(0, 160));
+  const data = JSON.parse(txt);
+  if (data.error) throw new Error('RPC ' + (data.error.message || JSON.stringify(data.error)));
+  return data.result;
+}
+
+function hexAmountV26_(hex, decimals) {
+  if (!hex || hex === '0x') return 0;
+  try {
+    const n = BigInt(hex);
+    const d = BigInt(10) ** BigInt(decimals);
+    const integer = n / d;
+    const fraction = (n % d).toString().padStart(decimals, '0').replace(/0+$/, '');
+    const txt = integer.toString() + (fraction ? '.' + fraction : '');
+    return Number(txt);
+  } catch (e) {
+    return parseInt(hex, 16) / Math.pow(10, decimals);
+  }
+}
+
+
+function terraEndpointCandidatesV263_(preferred, chain) {
+  const list = [];
+  const push = function(x) {
+    x = String(x || '').trim().replace(/\/$/, '');
+    if (x && list.indexOf(x) < 0) list.push(x);
+  };
+  push(preferred);
+  if (chain === 'TERRA') {
+    push(CT_WALLET.TERRA_LCD);
+    (CT_WALLET.TERRA_LCD_FALLBACKS || []).forEach(push);
+  } else if (chain === 'TERRA_CLASSIC') {
+    push(CT_WALLET.TERRA_CLASSIC_LCD);
+    (CT_WALLET.TERRA_CLASSIC_LCD_FALLBACKS || []).forEach(push);
+  }
+  return list;
+}
+
+function terraBalancesV263_(preferred, address, chain) {
+  const endpoints = terraEndpointCandidatesV263_(preferred, chain);
+  const errors = [];
+  for (let i = 0; i < endpoints.length; i++) {
+    const ep = endpoints[i];
+    try {
+      const rows = terraBalancesV26_(ep, address, chain);
+      return { rows: rows, endpoint: ep, attempts: i + 1 };
+    } catch (e) {
+      errors.push(terraHostV263_(ep) + ': ' + String(e && e.message ? e.message : e).slice(0, 140));
+    }
+  }
+  throw new Error('Terra LCD sin respuesta. Intentos: ' + errors.join(' | '));
+}
+
+function terraHostV263_(url) {
+  return String(url || '').replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+}
+
+function terraBalancesV26_(lcd, address, chain) {
+  const bank = terraFetchFirstV26_([
+    lcd + '/cosmos/bank/v1beta1/balances/' + encodeURIComponent(address) + '?pagination.limit=200',
+    lcd + '/bank/balances/' + encodeURIComponent(address)
+  ]);
+  const coins = normalizeTerraCoinsV26_(bank && (bank.balances || bank.result || []));
+
+  let delegations = [];
+  try {
+    const d = terraFetchFirstV26_([
+      lcd + '/cosmos/staking/v1beta1/delegations/' + encodeURIComponent(address) + '?pagination.limit=200',
+      lcd + '/staking/delegators/' + encodeURIComponent(address) + '/delegations'
+    ]);
+    const rows = d.delegation_responses || d.result || [];
+    delegations = rows.map(x => x.balance || x).filter(Boolean);
+  } catch (e) {}
+
+  let rewards = [];
+  try {
+    const r = terraFetchFirstV26_([
+      lcd + '/cosmos/distribution/v1beta1/delegators/' + encodeURIComponent(address) + '/rewards',
+      lcd + '/distribution/delegators/' + encodeURIComponent(address) + '/rewards'
+    ]);
+    rewards = r.total || (r.result && r.result.total) || [];
+  } catch (e) {}
+
+  const stakedByDenom = sumCoinsV26_(delegations);
+  const rewardsByDenom = sumCoinsV26_(rewards);
+  const rows = [];
+  const denomSet = {};
+  coins.forEach(c => denomSet[c.denom] = true);
+  Object.keys(stakedByDenom).forEach(d => denomSet[d] = true);
+  Object.keys(rewardsByDenom).forEach(d => denomSet[d] = true);
+
+  Object.keys(denomSet).forEach(denom => {
+    const asset = terraAssetV26_(chain, denom);
+    if (!asset) return;
+    const decimals = 6;
+    const liquidRaw = coins.filter(c => c.denom === denom).reduce((s, c) => s + Number(c.amount || 0), 0);
+    const stakeRaw = Number(stakedByDenom[denom] || 0);
+    const rewardRaw = Number(rewardsByDenom[denom] || 0);
+    const scale = Math.pow(10, decimals);
+    const liquid = liquidRaw / scale;
+    const staked = stakeRaw / scale;
+    const reward = rewardRaw / scale;
+    rows.push({
+      asset: asset,
+      liquid: liquid,
+      staked: staked,
+      rewards: reward,
+      total: liquid + staked + reward,
+      note: 'Saldo bank + delegaciones + rewards (' + denom + ')'
+    });
+  });
+
+  // Mantener filas esperadas aun cuando el saldo sea cero.
+  const expected = chain === 'TERRA' ? ['LUNA'] : ['LUNC', 'USTC'];
+  expected.forEach(asset => {
+    if (!rows.some(r => r.asset === asset)) rows.push({ asset: asset, liquid: 0, staked: 0, rewards: 0, total: 0, note: 'Sin saldo reportado por LCD' });
+  });
+  return rows;
+}
+
+function terraFetchFirstV26_(urls) {
+  let last = null;
+  for (let i = 0; i < urls.length; i++) {
+    try {
+      const res = UrlFetchApp.fetch(urls[i], {
+        method: 'get', muteHttpExceptions: true,
+        headers: { 'User-Agent': CT.USER_AGENT || 'CryptoTrackerSheet/2.6' }
+      });
+      const code = res.getResponseCode();
+      if (code >= 200 && code < 300) return JSON.parse(res.getContentText());
+      last = new Error('HTTP ' + code + ' ' + res.getContentText().slice(0, 120));
+    } catch (e) { last = e; }
+  }
+  throw last || new Error('Sin respuesta Terra LCD');
+}
+
+function normalizeTerraCoinsV26_(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.map(x => ({ denom: String(x.denom || ''), amount: String(x.amount || '0') })).filter(x => x.denom);
+}
+
+function sumCoinsV26_(arr) {
+  const out = {};
+  (arr || []).forEach(x => {
+    const denom = String(x.denom || '');
+    if (!denom) return;
+    out[denom] = (out[denom] || 0) + Number(x.amount || 0);
+  });
+  return out;
+}
+
+function terraAssetV26_(chain, denom) {
+  const d = String(denom || '').toLowerCase();
+  if (chain === 'TERRA' && d === 'uluna') return 'LUNA';
+  if (chain === 'TERRA_CLASSIC' && d === 'uluna') return 'LUNC';
+  if (chain === 'TERRA_CLASSIC' && d === 'uusd') return 'USTC';
+  return null;
+}
+
+function makeOnChainRowV26_(wallet, chain, address, asset, liquid, staked, rewards, total, source, now, note) {
+  return [wallet, chain, address, asset, liquid, staked, rewards, total, source, now, note];
+}
+
+function writeOnChainBalancesV26_(ss, rows) {
+  const sh = ss.getSheetByName(CT_WALLET.SHEET_BALANCES);
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).clearContent();
+  if (rows.length) sh.getRange(2, 1, rows.length, 11).setValues(rows);
+  if (rows.length) {
+    sh.getRange(2, 5, rows.length, 4).setNumberFormat('0.00000000');
+    sh.getRange(2, 10, rows.length, 1).setNumberFormat('dd/MM/yyyy HH:mm:ss');
+  }
+  sh.autoResizeColumns(1, 11);
+  sh.setFrozenRows(1);
+
+  // Actualiza fecha/estado en Wallets.
+  const w = ss.getSheetByName(CT_WALLET.SHEET_WALLETS);
+  if (w.getLastRow() > 1) {
+    for (let r = 2; r <= w.getLastRow(); r++) {
+      const name = String(w.getRange(r, 1).getValue()).trim();
+      const chain = String(w.getRange(r, 2).getValue()).trim().toUpperCase();
+      const hasOk = rows.some(x => x[0] === name && x[1] === chain && x[3] !== 'ERROR');
+      const hasErr = rows.some(x => x[0] === name && x[1] === chain && x[3] === 'ERROR');
+      w.getRange(r, 6).setValue(new Date()).setNumberFormat('dd/MM/yyyy HH:mm:ss');
+      w.getRange(r, 7).setValue(hasOk ? (hasErr ? 'PARCIAL' : 'OK') : 'ERROR');
+    }
+  }
+}
+
+function applySafeOnChainBalancesV26_(ss, rows, tokens) {
+  // Solo aplica automaticamente saldos que representan la posicion completa conocida.
+  // CAKE NO se auto-aplica porque balanceOf no incluye CAKE depositado en pools/staking.
+  const safe = {};
+  rows.forEach(r => {
+    const wallet = r[0], chain = r[1], asset = r[3], total = Number(r[7]);
+    if (!asset || !isFinite(total)) return;
+    if (asset === 'BNB' && chain === 'BSC') safe['MetaMask Account 2|BNB'] = total;
+    if (asset === 'LUNA' && chain === 'TERRA') safe['Keplr|LUNA'] = total;
+    if (asset === 'LUNC' && chain === 'TERRA_CLASSIC') safe['Keplr|LUNC'] = total;
+    if (asset === 'USTC' && chain === 'TERRA_CLASSIC') safe['Keplr|USTC'] = total;
+  });
+
+  const loc = ss.getSheetByName('Por ubicación');
+  if (!loc || loc.getLastRow() < 2) return;
+  const data = loc.getRange(2, 1, loc.getLastRow() - 1, Math.max(7, loc.getLastColumn())).getValues();
+  Object.keys(safe).forEach(key => {
+    const parts = key.split('|');
+    const location = parts[0], asset = parts[1];
+    let found = false;
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][0]).trim() === location && String(data[i][1]).trim().toUpperCase() === asset) {
+        loc.getRange(i + 2, 3).setValue(safe[key]);
+        loc.getRange(i + 2, 5).setValue('Alta');
+        loc.getRange(i + 2, 6).setValue('Saldo actualizado automaticamente on-chain v2.6.');
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      loc.appendRow([location, asset, safe[key], '', 'Alta', 'Saldo actualizado automaticamente on-chain v2.6.', '']);
+    }
+  });
+
+  // Recalcula cantidad total de esos activos desde Por ubicacion para conservar saldos custodiales.
+  const cartera = ss.getSheetByName('Cartera');
+  if (!cartera || cartera.getLastRow() < 2) return;
+  ['BNB', 'LUNA', 'LUNC', 'USTC'].forEach(asset => {
+    const vals = loc.getRange(2, 1, Math.max(0, loc.getLastRow() - 1), 3).getValues();
+    const total = vals.reduce((s, x) => String(x[1]).trim().toUpperCase() === asset ? s + Number(x[2] || 0) : s, 0);
+    for (let r = 2; r <= cartera.getLastRow(); r++) {
+      if (String(cartera.getRange(r, 1).getValue()).trim().toUpperCase() === asset) {
+        cartera.getRange(r, 2).setValue(total);
+        const pieces = vals.filter(x => String(x[1]).trim().toUpperCase() === asset && Number(x[2] || 0) !== 0)
+          .map(x => String(x[0]) + ': ' + Number(x[2]));
+        cartera.getRange(r, 17).setValue(pieces.join('; '));
+        break;
+      }
+    }
+  });
+}
+
+function buildOnChainReconciliationV26_(ss, rows) {
+  const sh = ss.getSheetByName(CT_WALLET.SHEET_RECON);
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).clearContent();
+  const loc = ss.getSheetByName('Por ubicación');
+  const locVals = loc && loc.getLastRow() > 1 ? loc.getRange(2, 1, loc.getLastRow() - 1, 3).getValues() : [];
+  const out = [];
+
+  rows.filter(r => r[3] !== 'ERROR').forEach(r => {
+    const wallet = r[0], chain = r[1], asset = String(r[3]).toUpperCase();
+    const total = Number(r[7] || 0);
+    let location = '';
+    let auto = 'NO';
+    if (asset === 'BNB' && chain === 'BSC') { location = 'MetaMask Account 2'; auto = 'SI'; }
+    if (asset === 'CAKE' && chain === 'BSC') { location = 'PancakeSwap'; auto = 'NO'; }
+    if (asset === 'LUNA' && chain === 'TERRA') { location = 'Keplr'; auto = 'SI'; }
+    if ((asset === 'LUNC' || asset === 'USTC') && chain === 'TERRA_CLASSIC') { location = 'Keplr'; auto = 'SI'; }
+    if (!location) return;
+    const registered = locVals.reduce((s, x) => String(x[0]).trim() === location && String(x[1]).trim().toUpperCase() === asset ? s + Number(x[2] || 0) : s, 0);
+    const delta = total - registered;
+    const state = asset === 'CAKE' ? 'POOL / STAKING' : (auto === 'SI' ? (Math.abs(delta) < 1e-8 ? 'OK' : 'APLICADO / REVISAR') : 'REVISION MANUAL');
+    const note = asset === 'CAKE' ? 'Posicion externa esperada: CAKE esta depositado en pool/staking de PancakeSwap. El balance libre de la wallet puede ser 0 y no representa la posicion total.' : 'Saldo on-chain conciliado con Por ubicacion.';
+    out.push([asset, wallet + ' / ' + chain, total, registered, delta, auto, state, r[9], note]);
+  });
+  if (out.length) sh.getRange(2, 1, out.length, 9).setValues(out);
+  if (out.length) {
+    sh.getRange(2, 3, out.length, 3).setNumberFormat('0.00000000');
+    sh.getRange(2, 8, out.length, 1).setNumberFormat('dd/MM/yyyy HH:mm:ss');
+  }
+  sh.autoResizeColumns(1, 9);
+  sh.setFrozenRows(1);
+}
+
+function ensureSheetV26_(ss, name) {
+  return ss.getSheetByName(name) || ss.insertSheet(name);
+}
+
+function readTableObjectsV26_(sh) {
+  if (!sh || sh.getLastRow() < 2) return [];
+  const values = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+  const headers = values[0].map(x => String(x).trim());
+  return values.slice(1).filter(r => r.some(v => v !== '' && v != null)).map(r => {
+    const o = {};
+    headers.forEach((h, i) => o[h] = r[i]);
+    return o;
+  });
+}
+
+function isYesV26_(v) {
+  return ['SI', 'SÍ', 'YES', 'TRUE', '1'].indexOf(String(v || '').trim().toUpperCase()) >= 0;
+}
+
+function styleConfigSheetV26_(sh, cols) {
+  sh.setFrozenRows(1);
+  sh.getRange(1, 1, 1, cols).setFontWeight('bold').setBackground('#202124').setFontColor('#ffffff');
+  sh.autoResizeColumns(1, cols);
+  sh.setRowHeight(1, 28);
+}
+
+// ============================================================
+// v2.6.4 - limpieza Dashboard + Alertas
+// ============================================================
+
+function repairV264() {
+  const ss = SpreadsheetApp.getActive();
+  repairDashboardV264_();
+  closeStaleAlertsV264_();
+  recalcDecisionEngineV23_();
+  augmentDecisionProposalsV25_();
+  syncOnChainWalletsV26_({ silent: true });
+  scanExternalRadarV25();
+  generateAlertsV264_();
+  SpreadsheetApp.flush();
+  ss.toast('v2.6.4 reparada: Dashboard y Alertas corregidos', 'Crypto Tracker', 6);
+}
+
+function repairDashboardV264_() {
+  const ss = SpreadsheetApp.getActive();
+  const sh = ss.getSheetByName('Dashboard');
+  if (!sh) return;
+
+  sh.getRange('A8').setValue('Capital histórico identificado');
+  sh.getRange('A9').setFormula('=SUM(Cartera!G2:G200)');
+  sh.getRange('C8').setValue('Capital pendiente recuperar');
+  sh.getRange('C9').setFormula('=SUM(Cartera!K2:K200)');
+  sh.getRange('E8').setValue('Rewards conocidos USD*');
+  sh.getRange('E9').setFormula('=SUMPRODUCT(Cartera!M2:M200,Cartera!C2:C200)');
+  sh.getRange('G8').setValue('Pendientes registrados');
+  sh.getRange('G9').setFormula('=MAX(COUNTA(Pendientes!A:A)-1,0)');
+  sh.getRange('E6').setFormula('=IFERROR(C6/A6,0)');
+  sh.getRange('E6').setNumberFormat('0.0%');
+
+  // El bloque Legacy se conserva como archivo histórico, pero queda oculto para
+  // evitar que sus referencias antiguas confundan la operativa actual.
+  ss.getSheets().forEach(s => {
+    if (String(s.getName()).indexOf('Legacy - ') === 0 && !s.isSheetHidden()) {
+      try { s.hideSheet(); } catch (e) {}
+    }
+  });
+}
+
+function closeStaleAlertsV264_() {
+  const ss = SpreadsheetApp.getActive();
+  const sh = ss.getSheetByName('Alertas');
+  const dec = ss.getSheetByName('Decisiones');
+  if (!sh || sh.getLastRow() < 2 || !dec || dec.getLastRow() < 2) return;
+
+  const dh = dec.getRange(1,1,1,dec.getLastColumn()).getDisplayValues()[0];
+  const da = dh.indexOf('Activo');
+  const dact = dh.indexOf('Acción');
+  const current = {};
+  dec.getRange(2,1,dec.getLastRow()-1,dec.getLastColumn()).getValues().forEach(r => {
+    const a = String(r[da] || '').trim().toUpperCase();
+    if (a) current[a] = String(r[dact] || '').trim();
+  });
+
+  const vals = sh.getRange(2,1,sh.getLastRow()-1,sh.getLastColumn()).getValues();
+  let changed = false;
+  vals.forEach(r => {
+    const asset = String(r[1] || '').trim().toUpperCase();
+    const action = String(r[3] || '').trim();
+    const status = String(r[8] || '').trim();
+    if (status === 'ABIERTA' && asset && current[asset] && current[asset] !== action) {
+      r[8] = 'CERRADA - OBSOLETA';
+      r[10] = (String(r[10] || '') + ' | Cerrada automáticamente: la acción vigente es ' + current[asset] + '.').trim();
+      changed = true;
+    }
+  });
+  if (changed) sh.getRange(2,1,vals.length,vals[0].length).setValues(vals);
+}
+
+function generateAlertsV264_() {
+  const ss = SpreadsheetApp.getActive();
+  const dec = ss.getSheetByName('Decisiones');
+  const cfg = ss.getSheetByName('Config');
+  if (!dec || dec.getLastRow() < 2 || !cfg) return;
+  const sh = ensureAlertsV24_();
+  const now = new Date();
+  const minConfidence = num_(cfg.getRange('B21').getValue(), 60) / 100;
+  const cooldownH = num_(cfg.getRange('B22').getValue(), 12);
+  const nearEntryPct = num_(cfg.getRange('B23').getValue(), 3) / 100;
+
+  const headers = dec.getRange(1,1,1,dec.getLastColumn()).getDisplayValues()[0];
+  const idx = name => headers.indexOf(name);
+  const rows = dec.getRange(2,1,dec.getLastRow()-1,dec.getLastColumn()).getValues();
+
+  const recent = {};
+  if (sh.getLastRow() >= 2) {
+    sh.getRange(2,1,sh.getLastRow()-1,10).getValues().forEach(r => {
+      const d = dateOrNull_(r[0]);
+      const key = String(r[9] || '');
+      if (d && key && String(r[8] || '') === 'ABIERTA' && (now-d)/3600000 <= cooldownH) recent[key] = true;
+    });
+  }
+
+  const batch = [];
+  rows.forEach(r => {
+    const asset = String(r[idx('Activo')] || '').trim().toUpperCase();
+    if (!asset) return;
+    const action = String(r[idx('Acción')] || '').trim();
+    const price = numOrNull_(r[idx('Precio mercado')]);
+    const confidence = numOrNull_(r[idx('Confianza %')]);
+    const capital = numOrNull_(r[idx('Capital sugerido USD')]) || 0;
+    const support = numOrNull_(r[idx('Soporte')]);
+    const fib618 = numOrNull_(r[idx('Fib 61,8')]);
+    const freshness = String(r[idx('Frescura')] || '').trim();
+    const thesis = String(r[idx('Tesis / motivo')] || '').trim();
+    let type = '', condition = '';
+
+    if (action === 'REVISAR DATOS' || freshness === '🔴 OBSOLETO') {
+      type = 'DATOS OBSOLETOS'; condition = 'Actualizar mercado antes de actuar';
+    } else if (confidence !== null && confidence < minConfidence) {
+      return;
+    } else if (action === 'AUMENTAR') {
+      type = 'ENTRADA LISTA'; condition = String(r[idx('Entrada objetivo')] || '') || 'Precio dentro de zona objetivo';
+    } else if (action === 'ESPERAR ENTRADA') {
+      const zone = entryZoneV23_(price, support, fib618);
+      if (!zone.valid || price === null || price <= zone.hi) return;
+      const gap = price / zone.hi - 1;
+      if (gap > nearEntryPct) return;
+      type = 'CERCA DE ENTRADA'; condition = 'A ' + (gap*100).toFixed(2) + '% de la zona ' + fmt_(zone.lo) + '–' + fmt_(zone.hi);
+    } else if (action === 'ASEGURAR BENEFICIO') {
+      type = 'TOMA DE BENEFICIO'; condition = 'Revisar venta parcial / proteccion';
+    } else if (action === 'REDUCIR EN REBOTE' || action === 'VENDER') {
+      type = 'RIESGO'; condition = action === 'VENDER' ? 'Revisar salida ordenada' : 'Reducir solo en recuperacion/rebote';
+    } else return;
+
+    const key = asset + '|' + type + '|' + action;
+    if (recent[key]) return;
+    recent[key] = true;
+    batch.push([now,asset,type,action,price === null ? '' : price,confidence === null ? '' : confidence,capital,condition,'ABIERTA',key,thesis]);
+  });
+
+  if (!batch.length) return;
+  const start = sh.getLastRow()+1;
+  sh.getRange(start,1,batch.length,batch[0].length).setValues(batch);
+  sh.getRange(start,1,batch.length,1).setNumberFormat('dd/MM/yyyy HH:mm');
+  sh.getRange(start,5,batch.length,1).setNumberFormat('$#,##0.########');
+  sh.getRange(start,6,batch.length,1).setNumberFormat('0%');
+  sh.getRange(start,7,batch.length,1).setNumberFormat('$#,##0.00');
+  sh.getRange(start,11,batch.length,1).setWrap(true);
+}
+
+// ============================================================
+// v2.6.5 / Front v4.2 - planes operativos, alertas unicas y radar portfolio-aware
+// ============================================================
+
+function repairV265() {
+  const ss = SpreadsheetApp.getActive();
+  setupTradingConfigV25_();
+  recalcDecisionEngineV23_();
+  augmentDecisionProposalsV25_();
+  syncOnChainWalletsV26_({ silent: true });
+  scanExternalRadarV25();
+  closeStaleAlertsV264_();
+  generateAlertsV264_();
+  repairDashboardV264_();
+  SpreadsheetApp.flush();
+  ss.toast('v2.6.5: planes, alertas unicas y radar v4.2 preparados', 'Crypto Tracker', 7);
+}
+
+// Override: cuantifica acciones con tratamiento legacy/deep-loss.
+function augmentDecisionProposalsV25_() {
+  const ss=SpreadsheetApp.getActive();
+  const dec=ss.getSheetByName('Decisiones'); if(!dec||dec.getLastRow()<2) return;
+  const headers=dec.getRange(1,1,1,dec.getLastColumn()).getDisplayValues()[0];
+  const ensure=(name)=>{let i=headers.indexOf(name); if(i>=0) return i+1; dec.insertColumnAfter(dec.getLastColumn()); const c=dec.getLastColumn(); dec.getRange(1,c).setValue(name); headers.push(name); return c;};
+  const cPct=ensure('Propuesta %'), cUsd=ensure('Propuesta USD'), cUnits=ensure('Propuesta unidades'), cType=ensure('Tipo propuesta'), cText=ensure('Propuesta operativa'), cTrigger=ensure('Condición operativa'), cPlan=ensure('Plan operativo');
+  const h=dec.getRange(1,1,1,dec.getLastColumn()).getDisplayValues()[0];
+  const idx=(n)=>h.indexOf(n);
+  const vals=dec.getRange(2,1,dec.getLastRow()-1,dec.getLastColumn()).getValues();
+  const baseSell=configValueV25_('Venta parcial base',10)/100;
+  const strongSell=configValueV25_('Venta parcial fuerte',25)/100;
+  const out=[];
+  vals.forEach(r=>{
+    const action=str_(r[idx('Acción')]), asset=str_(r[idx('Activo')]);
+    const qty=numOrNull_(r[idx('Cantidad')])||0, value=numOrNull_(r[idx('Valor USD')])||0, price=numOrNull_(r[idx('Precio mercado')])||0;
+    const weight=numOrNull_(r[idx('% cartera')])||0, maxW=numOrNull_(r[idx('Peso máximo')])||0, capital=numOrNull_(r[idx('Capital sugerido USD')])||0;
+    const state=str_(r[idx('Estado capital')]), pl=numOrNull_(r[idx('P/L %')]), rsi=numOrNull_(r[idx('RSI 1D')]), resist=numOrNull_(r[idx('Resistencia')]), support=numOrNull_(r[idx('Soporte')]), score=numOrNull_(r[idx('Score final')]);
+    let pct=0,usd=0,units=0,type='SIN ACCION',text='Mantener sin operar.',trigger='Ahora',plan='MANTENER';
+
+    if(action==='ASEGURAR BENEFICIO'){
+      pct=/SOLO GANANCIAS/i.test(state)?baseSell:Math.max(baseSell,0.15);
+      if((maxW>0&&weight>maxW)||(rsi!==null&&rsi>=65)||(price>0&&resist!==null&&price>=resist*0.985)) pct+=0.05;
+      pct=Math.min(0.25,pct); usd=value*pct; units=qty*pct; type='VENTA PARCIAL'; plan='TOMAR BENEFICIO';
+      trigger=resist?('Cerca de resistencia '+fmt_(resist)):'Con señal de agotamiento / resistencia';
+      text='Tomar '+Math.round(pct*100)+'%: vender aprox. '+round_(units,8)+' '+asset+' (~'+Math.round(usd)+' USD). Mantener el resto.';
+    } else if(action==='REDUCIR EN REBOTE'){
+      const deepLoss = pl!==null && pl<=-0.60;
+      const recovered = /RECUPERADO|SOLO GANANCIAS/i.test(state);
+      if(deepLoss && recovered) pct=0.15;
+      else if(deepLoss) pct=strongSell;
+      else pct=Math.min(strongSell,0.20);
+      if(score!==null&&score<30) pct=Math.min(0.40,pct+0.10);
+      if(/SOLO GANANCIAS/i.test(state)) pct=Math.min(pct,0.20);
+      usd=value*pct; units=qty*pct; type='VENTA PARCIAL CONDICIONADA'; plan=deepLoss?'LEGACY / RECUPERACIÓN':'REDUCIR RIESGO';
+      const target=resist|| (price>0?price*1.10:null);
+      trigger=target?('Solo en rebote hacia '+fmt_(target)):'Solo con recuperación técnica';
+      text='No vender por impulso ahora. En rebote, reducir '+Math.round(pct*100)+'%: '+round_(units,8)+' '+asset+' (~'+Math.round(usd)+' USD).';
+    } else if(action==='VENDER'){
+      pct=1; usd=value; units=qty; type='VENTA'; plan='SALIDA'; trigger=support?('Si pierde soporte '+fmt_(support)):'Con confirmación de deterioro';
+      text='Salida completa orientativa: '+round_(units,8)+' '+asset+' (~'+Math.round(usd)+' USD).';
+    } else if(action==='AUMENTAR'){
+      usd=capital; units=price>0?usd/price:0; type='COMPRA'; plan='COMPRAR TRAMO'; trigger='Precio dentro de la zona objetivo';
+      text=usd>0?'Comprar primer tramo de ~'+Math.round(usd)+' USD ('+round_(units,8)+' '+asset+' aprox.).':'Señal favorable sin capital sugerido.';
+    } else if(action==='ESPERAR ENTRADA'){
+      usd=capital; const entry=str_(r[idx('Entrada objetivo')]); const mid=parseEntryMidV25_(entry); units=mid>0?usd/mid:0; type='COMPRA PLANIFICADA'; plan='ESPERAR ENTRADA'; trigger=entry||'Esperar zona objetivo';
+      text=usd>0?'Si entra en zona, comprar ~'+Math.round(usd)+' USD'+(units>0?' (~'+round_(units,8)+' '+asset+')':'')+'. No comprar a mercado.':'Esperar la zona objetivo antes de comprar.';
+    } else if(action==='NO AUMENTAR') { type='ESPERAR'; plan='NO AUMENTAR'; trigger='Esperar mejora técnica'; text='No comprar ahora. Mantener y reevaluar.'; }
+    else if(action==='MANTENER') { type='MANTENER'; plan='MANTENER'; trigger='Sin acción'; text='Mantener. Sin compra ni venta propuesta ahora.'; }
+    else if(action==='MANTENER RESERVA') { type='RESERVA'; plan='RESERVA'; trigger='Mantener liquidez'; text='Mantener liquidez en reserva; desplegar solo ante oportunidad válida.'; }
+    else if(action==='MANTENER RESIDUAL') { type='MANTENER'; plan='RESIDUAL'; trigger='Sin acción'; text='Mantener residual; el impacto de operar es bajo.'; }
+    else if(action==='REVISAR DATOS') { type='ESPERAR'; plan='REVISAR DATOS'; trigger='Actualizar datos'; text='No operar hasta actualizar datos.'; }
+    out.push([pct,usd,units,type,text,trigger,plan]);
+  });
+  if(out.length){
+    dec.getRange(2,cPct,out.length,1).setValues(out.map(x=>[x[0]])).setNumberFormat('0%');
+    dec.getRange(2,cUsd,out.length,1).setValues(out.map(x=>[x[1]])).setNumberFormat('$#,##0.00;[Red]($#,##0.00);-');
+    dec.getRange(2,cUnits,out.length,1).setValues(out.map(x=>[x[2]])).setNumberFormat('0.########');
+    dec.getRange(2,cType,out.length,1).setValues(out.map(x=>[x[3]]));
+    dec.getRange(2,cText,out.length,1).setValues(out.map(x=>[x[4]])).setWrap(true);
+    dec.getRange(2,cTrigger,out.length,1).setValues(out.map(x=>[x[5]])).setWrap(true);
+    dec.getRange(2,cPlan,out.length,1).setValues(out.map(x=>[x[6]]));
+    dec.setColumnWidth(cText,480); dec.setColumnWidth(cTrigger,260);
+  }
+}
+
+function ensureAlertsV265_(){
+  const sh=ensureAlertsV24_();
+  const extras=['Primera detección','Última confirmación','Repeticiones'];
+  if(sh.getMaxColumns()<14) sh.insertColumnsAfter(sh.getMaxColumns(),14-sh.getMaxColumns());
+  sh.getRange(1,12,1,3).setValues([extras]);
+  sh.setColumnWidth(12,145); sh.setColumnWidth(13,145); sh.setColumnWidth(14,95);
+  return sh;
+}
+
+// Override: una única alerta activa por Activo+Tipo; actualiza confirmación y contador.
+function generateAlertsV264_(){
+  const ss=SpreadsheetApp.getActive(), dec=ss.getSheetByName('Decisiones'), cfg=ss.getSheetByName('Config');
+  if(!dec||dec.getLastRow()<2||!cfg) return;
+  const sh=ensureAlertsV265_(), now=new Date();
+  const minConfidence=num_(cfg.getRange('B21').getValue(),60)/100, nearEntryPct=num_(cfg.getRange('B23').getValue(),3)/100;
+  const headers=dec.getRange(1,1,1,dec.getLastColumn()).getDisplayValues()[0], idx=n=>headers.indexOf(n);
+  const rows=dec.getRange(2,1,dec.getLastRow()-1,dec.getLastColumn()).getValues();
+  const active={};
+  if(sh.getLastRow()>=2){
+    const av=sh.getRange(2,1,sh.getLastRow()-1,14).getValues();
+    av.forEach((r,i)=>{if(String(r[8]||'').toUpperCase()==='ABIERTA'){const k=String(r[1]||'').toUpperCase()+'|'+String(r[2]||'').toUpperCase(); active[k]={row:i+2,data:r};}});
+  }
+  const seen=new Set(), append=[];
+  rows.forEach(r=>{
+    const asset=String(r[idx('Activo')]||'').trim().toUpperCase(); if(!asset)return;
+    const action=String(r[idx('Acción')]||'').trim(), price=numOrNull_(r[idx('Precio mercado')]), conf=numOrNull_(r[idx('Confianza %')]);
+    const capital=numOrNull_(r[idx('Propuesta USD')])||numOrNull_(r[idx('Capital sugerido USD')])||0;
+    const support=numOrNull_(r[idx('Soporte')]), fib=numOrNull_(r[idx('Fib 61,8')]); const freshness=String(r[idx('Frescura')]||'').trim();
+    const thesis=String(r[idx('Propuesta operativa')]||r[idx('Tesis / motivo')]||'').trim(), trigger=String(r[idx('Condición operativa')]||'').trim();
+    let type='', condition='';
+    if(action==='REVISAR DATOS'||freshness==='🔴 OBSOLETO'){type='DATOS OBSOLETOS';condition='Actualizar mercado antes de actuar';}
+    else if(conf!==null&&conf<minConfidence)return;
+    else if(action==='AUMENTAR'){type='ENTRADA LISTA';condition=trigger||String(r[idx('Entrada objetivo')]||'')||'Precio dentro de zona objetivo';}
+    else if(action==='ESPERAR ENTRADA'){const z=entryZoneV23_(price,support,fib);if(!z.valid||price===null||price<=z.hi)return;const gap=price/z.hi-1;if(gap>nearEntryPct)return;type='CERCA DE ENTRADA';condition='A '+(gap*100).toFixed(2)+'% de la zona '+fmt_(z.lo)+'–'+fmt_(z.hi);}
+    else if(action==='ASEGURAR BENEFICIO'){type='TOMA DE BENEFICIO';condition=trigger||'Revisar toma parcial';}
+    else if(action==='REDUCIR EN REBOTE'){type='PLAN DE REDUCCIÓN';condition=trigger||'Reducir solo en recuperación/rebote';}
+    else if(action==='VENDER'){type='RIESGO';condition=trigger||'Revisar salida ordenada';}
+    else return;
+    const key=asset+'|'+type; seen.add(key);
+    if(active[key]){
+      const rr=active[key].row, old=active[key].data; const first=old[11]||old[0]||now; const reps=(Number(old[13])||1)+1;
+      sh.getRange(rr,1,1,14).setValues([[old[0]||now,asset,type,action,price===null?'':price,conf===null?'':conf,capital,condition,'ABIERTA',key,thesis,first,now,reps]]);
+    }else append.push([now,asset,type,action,price===null?'':price,conf===null?'':conf,capital,condition,'ABIERTA',key,thesis,now,now,1]);
+  });
+  Object.keys(active).forEach(k=>{if(!seen.has(k)){const rr=active[k].row;sh.getRange(rr,9).setValue('RESUELTA');sh.getRange(rr,13).setValue(now);}});
+  if(append.length){const st=sh.getLastRow()+1;sh.getRange(st,1,append.length,14).setValues(append);}
+  if(sh.getLastRow()>=2){sh.getRange(2,1,sh.getLastRow()-1,1).setNumberFormat('dd/MM/yyyy HH:mm');sh.getRange(2,12,sh.getLastRow()-1,2).setNumberFormat('dd/MM/yyyy HH:mm');sh.getRange(2,5,sh.getLastRow()-1,1).setNumberFormat('$#,##0.########');sh.getRange(2,6,sh.getLastRow()-1,1).setNumberFormat('0%');sh.getRange(2,7,sh.getLastRow()-1,1).setNumberFormat('$#,##0.00');}
+}
+
+function radarSectorV42_(asset){
+  const m={LINK:'ORACLES / INFRA',UNI:'DEFI / DEX',AAVE:'DEFI / LENDING',ONDO:'RWA',AVAX:'L1',SUI:'L1',APT:'L1',NEAR:'L1',ATOM:'COSMOS / L1',INJ:'DEFI / L1',ARB:'L2',OP:'L2',RENDER:'AI / COMPUTE',FET:'AI',TAO:'AI',TON:'L1',SEI:'L1',JUP:'SOLANA / DEFI',PYTH:'ORACLES',ENA:'DEFI / STABLE',PENDLE:'DEFI / YIELD'};
+  return m[String(asset||'').toUpperCase()]||'OTROS';
+}
+function radarRiskV42_(score,vol,chg){if(score>=75&&vol>=100000000&&Math.abs(chg)<=0.08)return'MEDIO';if(score>=65&&vol>=50000000&&Math.abs(chg)<=0.12)return'MEDIO-ALTO';return'ALTO';}
+function radarFitV42_(asset,sector,held){
+  const a=String(asset||'').toUpperCase();
+  if(['LINK','PYTH'].includes(a))return'Diversifica con infraestructura/oráculos no dominante en la cartera.';
+  if(['UNI','AAVE','PENDLE','JUP','ENA'].includes(a))return'Aporta exposición DeFi distinta de CAKE; vigilar solapamiento sectorial.';
+  if(['ARB','OP'].includes(a))return'Aporta exposición L2; complementa ETH sin duplicarlo directamente.';
+  if(['RENDER','FET','TAO'].includes(a))return'Añade temática AI/compute, poco representada actualmente.';
+  if(['AVAX','SUI','APT','NEAR','SEI','TON','ATOM','INJ'].includes(a))return'Diversifica exposición L1; tamaño inicial pequeño por correlación alta con mercado crypto.';
+  return 'Candidato técnico; mantener primer tramo pequeño hasta validar su aportación a la cartera.';
+}
+
+
+function isRadarExcludedV422_(asset){
+  const a=String(asset||'').trim().toUpperCase();
+  if(!a)return true;
+  const stablecoins=new Set([
+    'USDT','USDC','FDUSD','TUSD','USDP','DAI','USD1','USDE','USDS','USDD','PYUSD','RLUSD','GUSD','BUSD',
+    'USTC','USDJ','USDX','USDN','USDF','SUSD','LUSD','FRAX','CRVUSD','GHO','AEUR','EUR','EURT','TRY','BRL','BIDR'
+  ]);
+  const wrappedOrDuplicate=new Set([
+    'WBTC','BTCB','WETH','WBETH','WBNB','BETH','STETH','WSTETH','RETH','CBETH','METH','EZETH','EETH','WEETH',
+    'BNSOL','JITOSOL','STSOL'
+  ]);
+  const nonCryptoExposure=new Set(['PAXG','XAUT']);
+  if(stablecoins.has(a)||wrappedOrDuplicate.has(a)||nonCryptoExposure.has(a))return true;
+  if(/(UP|DOWN|BULL|BEAR|[235]L|[235]S)$/.test(a))return true;
+  return false;
+}
+
+// Override: conserva el escaneo existente y añade contexto de cartera/riesgo/sector.
+const scanExternalRadarV25_base_v265_ = scanExternalRadarV25;
+function scanExternalRadarV25(){
+  // Implementación equivalente al radar v2.5 con columnas extendidas.
+  setupTradingConfigV25_();
+  const ss=SpreadsheetApp.getActive(), car=ss.getSheetByName('Cartera'); if(!car)return;
+  let sh=ss.getSheetByName('Radar');if(!sh)sh=ss.insertSheet('Radar');
+  const heldArr=car.getRange(2,1,Math.max(0,car.getLastRow()-1),1).getDisplayValues().flat().map(x=>String(x||'').trim().toUpperCase()).filter(Boolean), held=new Set(heldArr);
+  const total=car.getLastRow()>=2?car.getRange(2,4,car.getLastRow()-1,1).getValues().flat().reduce((s,v)=>s+(Number(v)||0),0):0;
+  const usdcRow=car.getRange(2,1,Math.max(0,car.getLastRow()-1),4).getValues().find(r=>String(r[0]||'').toUpperCase()==='USDC');
+  const usdc=usdcRow?Number(usdcRow[3])||0:0, reserve=total*0.50, deployable=Math.max(0,usdc-reserve);
+  const maxNewPct=configValueV25_('Radar: maximo nueva crypto',1)/100, maxVisible=Math.min(5,Math.round(configValueV25_('Radar: candidatos visibles',8))), minVol=configValueV25_('Radar: volumen minimo 24h',20000000);
+  const ex=fetchJson_('/api/v3/exchangeInfo'),tradable={};(ex.symbols||[]).forEach(s=>{if(s.quoteAsset==='USDT'&&s.status==='TRADING'&&s.isSpotTradingAllowed!==false)tradable[s.symbol]=s.baseAsset;});
+  const tickers=fetchJson_('/api/v3/ticker/24hr');
+  const candidates=(tickers||[]).map(t=>({t,asset:tradable[t.symbol]}))
+    .filter(x=>x.asset&&!held.has(String(x.asset).toUpperCase())&&!isRadarExcludedV422_(x.asset)&&Number(x.t.quoteVolume)>=minVol)
+    .sort((a,b)=>Number(b.t.quoteVolume)-Number(a.t.quoteVolume)).slice(0,40);
+  const rows=[],now=new Date();
+  for(let i=0;i<candidates.length&&rows.length<maxVisible;i++){
+    const {t,asset}=candidates[i],symbol=t.symbol;try{
+      const k4=getKlines_(symbol,'4h',220),kd=getKlines_(symbol,'1d',240),kw=getKlines_(symbol,'1w',100);if(k4.length<60||kd.length<100||kw.length<30)continue;
+      const price=Number(t.lastPrice),chg=Number(t.priceChangePercent)/100,vol=Number(t.quoteVolume),r4=rsi_(closes_(k4),14),rd=rsi_(closes_(kd),14),rw=rsi_(closes_(kw),14),tr4=trend_(closes_(k4)),trd=trend_(closes_(kd)),trw=trend_(closes_(kw)),sr=supportResistance_(kd,price,80),fib=fibonacci_(kd,120);
+      const tech=technicalScore_(price,rd,tr4,trd,trw,sr.support,sr.resistance),opp=opportunityScore_(price,rd,trd,trw,sr.support,sr.resistance);if(tech===null)continue;
+      const volScore=Math.max(60,100-i*2),score=Math.round(tech*.55+opp*.30+volScore*.15),zone=entryZoneV23_(price,sr.support,fib.f618),inZone=zone.valid&&price>=zone.lo&&price<=zone.hi;
+      let action=score>=72?(inZone?'COMPRAR AHORA':'ESPERAR ENTRADA'):(score>=62?'VIGILAR':'SIN ENTRADA');
+      let cap=Math.min(total*maxNewPct,deployable/Math.max(1,maxVisible));
+      if(score<72)cap*=.5;
+      if(action==='VIGILAR')cap*=.5;
+      if(action==='SIN ENTRADA')cap=0;
+      cap=Math.round(cap*100)/100;
+      const entry=zone.valid?fmt_(zone.lo)+' – '+fmt_(zone.hi):'',mid=zone.valid?(zone.lo+zone.hi)/2:price,units=mid>0?cap/mid:0,tp1=sr.resistance||'',tp2=sr.resistance?Math.max(sr.resistance*1.05,price*1.08):'',stop=sr.support?sr.support*.96:'';
+      const sector=radarSectorV42_(asset),risk=radarRiskV42_(score,vol,chg),fit=radarFitV42_(asset,sector,held),why='Score '+score+'/100 · '+trd+' 1D · RSI '+round_(rd,1)+' · volumen '+Math.round(vol/1000000)+'M USD.';
+      rows.push([asset,symbol,price,chg,vol,r4,rd,rw,tr4,trd,trw,sr.support,sr.resistance,entry,tech,opp,score,action,cap,units,tp1,tp2,stop,now,'Binance Market Data',sector,risk,fit,why]);
+    }catch(e){}Utilities.sleep(80);
+  }
+  rows.sort((a,b)=>(Number(b[16])||0)-(Number(a[16])||0));
+  if(rows.length>maxVisible)rows.splice(maxVisible);
+  const headers=['Activo','Par','Precio','Cambio 24h %','Volumen 24h USD','RSI 4H','RSI 1D','RSI 1W','Tend. 4H','Tend. 1D','Tend. 1W','Soporte','Resistencia','Entrada objetivo','Score técnico','Score oportunidad','Score final','Acción','Capital sugerido USD','Unidades sugeridas','TP1','TP2','Stop','Fecha','Fuente','Sector','Riesgo','Aporte a cartera','Motivo radar'];
+  sh.clearContents();sh.getRange(1,1,1,headers.length).setValues([headers]);if(rows.length)sh.getRange(2,1,rows.length,headers.length).setValues(rows);sh.setFrozenRows(1);if(rows.length){sh.getRange(2,3,rows.length,1).setNumberFormat('$#,##0.########');sh.getRange(2,4,rows.length,1).setNumberFormat('0.00%');sh.getRange(2,5,rows.length,1).setNumberFormat('$#,##0');sh.getRange(2,19,rows.length,1).setNumberFormat('$#,##0.00');sh.getRange(2,24,rows.length,1).setNumberFormat('dd/MM/yyyy HH:mm');}sh.autoResizeColumns(1,headers.length);sh.setColumnWidth(28,420);sh.setColumnWidth(29,360);
+}
+
+
+// ===== v4.4 / backend v2.7.1: pronósticos probabilísticos + front simplificado =====
+function upgradeForecastsV43(){
+  augmentForecastsV43_();
+  SpreadsheetApp.getActive().toast('Pronósticos 24h / 7d / 30d recalculados','Crypto Tracker',4);
+}
+
+function repairV43(){
+  try { repairV265(); } catch(e) { console.log('repairV265: '+e.message); }
+  scanExternalRadarV25();
+  augmentForecastsV43_();
+  SpreadsheetApp.getActive().toast('v4.3 preparada: pronósticos y propuestas cuantificadas','Crypto Tracker',5);
+}
+
+function clampV43_(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }
+function trendScoreV43_(v){
+  const s=String(v||'').toUpperCase();
+  if(/ALCISTA|BULL/.test(s)) return 1;
+  if(/BAJISTA|BEAR/.test(s)) return -1;
+  return 0;
+}
+function forecastOneV43_(price,change24,rsi4,rsi1d,rsi1w,tr4,tr1d,tr1w,support,resistance,baseConfidence){
+  if(!(price>0)) return null;
+  let bias=.20*trendScoreV43_(tr4)+.45*trendScoreV43_(tr1d)+.35*trendScoreV43_(tr1w);
+  if(rsi1d>0&&rsi1d<35) bias+=.16; else if(rsi1d>65) bias-=.16;
+  if(rsi1w>0&&rsi1w<40) bias+=.08; else if(rsi1w>65) bias-=.08;
+  if(support>0 && price/support<=1.04) bias+=.10;
+  if(resistance>0 && resistance/price<=1.04) bias-=.10;
+  bias=clampV43_(bias,-1,1);
+  let rangePct=0;
+  if(support>0&&resistance>support) rangePct=(resistance-support)/price;
+  const vol=clampV43_(Math.max(Math.abs(Number(change24)||0), rangePct>0?rangePct/6:0, .018), .018, .12);
+  const alignment=Math.abs(.20*trendScoreV43_(tr4)+.45*trendScoreV43_(tr1d)+.35*trendScoreV43_(tr1w));
+  const conf=clampV43_(.42+alignment*.22+clampV43_(Number(baseConfidence)||.60,.40,.90)*.32,.45,.86);
+  const bullProb=clampV43_(.50+bias*.30,.20,.80);
+  const scenario=bias>.22?'ALCISTA':(bias<-.22?'BAJISTA':'LATERAL / MIXTO');
+  function horizon(days,capBase,capBand){
+    const scale=Math.sqrt(days);
+    const baseRet=clampV43_(bias*vol*scale*.46,-capBase,capBase);
+    const band=clampV43_(vol*scale*.95,.015,capBand);
+    const low=Math.max(price*.05,price*(1+baseRet-band));
+    const high=price*(1+baseRet+band);
+    const base=price*(1+baseRet);
+    return {base,low,high,ret:baseRet};
+  }
+  const h24=horizon(1,.12,.15), h7=horizon(7,.28,.35), h30=horizon(30,.55,.65);
+  const reason='Sesgo '+scenario.toLowerCase()+' por tendencias 4H/1D/1W, RSI y proximidad a soporte/resistencia. Bandas amplían con el horizonte; no son garantía.';
+  return {scenario,conf,bullProb,h24,h7,h30,reason};
+}
+
+function ensureForecastColumnsV43_(sh){
+  if(!sh) return {};
+  let headers=sh.getRange(1,1,1,sh.getLastColumn()).getDisplayValues()[0];
+  const names=['Proy 24h base','Proy 24h min','Proy 24h max','Proy 7d base','Proy 7d min','Proy 7d max','Proy 30d base','Proy 30d min','Proy 30d max','Prob alcista','Confianza pronóstico','Escenario futuro','Motivo pronóstico'];
+  const out={};
+  names.forEach(n=>{let i=headers.indexOf(n);if(i<0){sh.insertColumnAfter(sh.getLastColumn());i=sh.getLastColumn()-1;sh.getRange(1,i+1).setValue(n);headers.push(n);}out[n]=i+1;});
+  return out;
+}
+
+function fillForecastSheetV43_(sh, kind){
+  if(!sh||sh.getLastRow()<2)return;
+  const cols=ensureForecastColumnsV43_(sh);
+  const headers=sh.getRange(1,1,1,sh.getLastColumn()).getDisplayValues()[0];
+  const idx=n=>headers.indexOf(n);
+  const vals=sh.getRange(2,1,sh.getLastRow()-1,sh.getLastColumn()).getValues();
+  const rows=[];
+  vals.forEach(r=>{
+    const price=Number(r[idx(kind==='radar'?'Precio':'Precio mercado')])||0;
+    const ch=Number(r[idx(kind==='radar'?'Cambio 24h %':'Cambio 24h %')])||0;
+    const r4=Number(r[idx('RSI 4H')])||0,rd=Number(r[idx('RSI 1D')])||0,rw=Number(r[idx('RSI 1W')])||0;
+    const t4=r[idx(kind==='radar'?'Tend. 4H':'Tend. 4H')],td=r[idx(kind==='radar'?'Tend. 1D':'Tend. 1D')],tw=r[idx(kind==='radar'?'Tend. 1W':'Tend. 1W')];
+    const sup=Number(r[idx('Soporte')])||0,res=Number(r[idx('Resistencia')])||0;
+    const bc=kind==='radar'?clampV43_((Number(r[idx('Score final')])||60)/100,.45,.85):(Number(r[idx('Confianza %')])||.60);
+    const f=forecastOneV43_(price,ch,r4,rd,rw,t4,td,tw,sup,res,bc);
+    rows.push(f?[f.h24.base,f.h24.low,f.h24.high,f.h7.base,f.h7.low,f.h7.high,f.h30.base,f.h30.low,f.h30.high,f.bullProb,f.conf,f.scenario,f.reason]:['','','','','','','','','','','','','']);
+  });
+  const order=['Proy 24h base','Proy 24h min','Proy 24h max','Proy 7d base','Proy 7d min','Proy 7d max','Proy 30d base','Proy 30d min','Proy 30d max','Prob alcista','Confianza pronóstico','Escenario futuro','Motivo pronóstico'];
+  order.forEach((n,j)=>{sh.getRange(2,cols[n],rows.length,1).setValues(rows.map(x=>[x[j]]));});
+  ['Proy 24h base','Proy 24h min','Proy 24h max','Proy 7d base','Proy 7d min','Proy 7d max','Proy 30d base','Proy 30d min','Proy 30d max'].forEach(n=>sh.getRange(2,cols[n],rows.length,1).setNumberFormat('$#,##0.########'));
+  ['Prob alcista','Confianza pronóstico'].forEach(n=>sh.getRange(2,cols[n],rows.length,1).setNumberFormat('0%'));
+  sh.setColumnWidth(cols['Motivo pronóstico'],420);
+}
+
+function augmentForecastsV43_(){
+  const ss=SpreadsheetApp.getActive();
+  fillForecastSheetV43_(ss.getSheetByName('Decisiones'),'decision');
+  fillForecastSheetV43_(ss.getSheetByName('Radar'),'radar');
+}
+
+
+function repairV44(){
+  try { repairV43(); } catch(e) { console.log('repairV43: '+e.message); }
+  try { augmentForecastsV43_(); } catch(e) { console.log('forecast v4.4: '+e.message); }
+  SpreadsheetApp.getActive().toast('v4.4 preparada: vista simple + pronósticos + planes cuantificados','Crypto Tracker',5);
+}
+
+
+/** v4.5 - separa decisión sobre posición actual de decisión de capital nuevo. */
+function repairV45(){
+  try { repairV44(); } catch(e) { console.log('repairV44: '+e.message); }
+  SpreadsheetApp.getActive().toast('v4.5 preparada: posición actual + capital nuevo separados','Crypto Tracker',5);
+}
+
+
+// ============================================================================
+// v4.6 / backend v2.8.0 - calibración, sizing dinámico y conciliación histórica
+// ============================================================================
+const CT_V46 = {
+  SHEET_FORECAST_HISTORY: 'Historial pronosticos',
+  SHEET_FORECAST_CAL: 'Calibracion pronosticos',
+  SHEET_HIST_RECON: 'Conciliacion historica'
+};
+
+function ensureSheetV46_(name){
+  const ss=SpreadsheetApp.getActive();
+  return ss.getSheetByName(name)||ss.insertSheet(name);
+}
+function ensureHeaderV46_(sh,headers){
+  if(sh.getLastRow()===0) sh.getRange(1,1,1,headers.length).setValues([headers]);
+  else {
+    const cur=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),headers.length)).getDisplayValues()[0];
+    headers.forEach((h,i)=>{ if(cur[i]!==h) sh.getRange(1,i+1).setValue(h); });
+  }
+  sh.setFrozenRows(1);
+}
+function headerIndexV46_(headers,name){ return headers.indexOf(name); }
+function numV46_(v,d){ const n=Number(v); return Number.isFinite(n)?n:(d||0); }
+function strV46_(v){ return String(v==null?'':v).trim(); }
+function clampV46_(v,a,b){ return Math.max(a,Math.min(b,v)); }
+
+function setupV46Config_(){
+  const cfg=SpreadsheetApp.getActive().getSheetByName('Config'); if(!cfg) return;
+  const vals=cfg.getRange(1,1,Math.max(1,cfg.getLastRow()),1).getDisplayValues().flat();
+  const rows=[
+    ['Sizing: compra max patrimonio',1.0,'%', 'Máximo orientativo para un primer tramo de compra'],
+    ['Sizing: venta min',5,'%', 'Mínimo de posición a reducir cuando existe señal'],
+    ['Sizing: venta max',30,'%', 'Máximo de posición a reducir por una sola señal'],
+    ['Sizing: reserva USDC',50,'%', 'Reserva mínima antes de financiar nuevas compras'],
+    ['Calibración: mínimo muestras',8,'muestras','Mínimo antes de usar la precisión histórica para ajustar sizing']
+  ];
+  let r=Math.max(2,cfg.getLastRow()+1);
+  rows.forEach(x=>{ if(!vals.includes(x[0])) {cfg.getRange(r,1,1,4).setValues([x]);cfg.getRange(r,2).setFontColor('#0000ff');r++;} });
+}
+
+function ensureForecastHistoryV46_(){
+  const sh=ensureSheetV46_(CT_V46.SHEET_FORECAST_HISTORY);
+  const headers=['Registrado','Activo','Precio base','Acción','Confianza señal','Escenario','Confianza pronóstico',
+    '24h base','24h min','24h max','24h real','24h rango','24h dirección','24h error abs %','24h evaluado',
+    '7d base','7d min','7d max','7d real','7d rango','7d dirección','7d error abs %','7d evaluado',
+    '30d base','30d min','30d max','30d real','30d rango','30d dirección','30d error abs %','30d evaluado'];
+  ensureHeaderV46_(sh,headers); return sh;
+}
+
+function appendForecastHistoryV46_(){
+  const ss=SpreadsheetApp.getActive(), dec=ss.getSheetByName('Decisiones');
+  if(!dec||dec.getLastRow()<2) return;
+  const sh=ensureForecastHistoryV46_();
+  const headers=dec.getRange(1,1,1,dec.getLastColumn()).getDisplayValues()[0], idx=n=>headers.indexOf(n);
+  const vals=dec.getRange(2,1,dec.getLastRow()-1,dec.getLastColumn()).getValues();
+  const now=new Date(), batch=[];
+  vals.forEach(r=>{
+    const asset=strV46_(r[idx('Activo')]).toUpperCase(); const price=numV46_(r[idx('Precio mercado')]);
+    if(!asset||!(price>0)||asset==='USDC') return;
+    const b24=numV46_(r[idx('Proy 24h base')]), lo24=numV46_(r[idx('Proy 24h min')]), hi24=numV46_(r[idx('Proy 24h max')]);
+    const b7=numV46_(r[idx('Proy 7d base')]), lo7=numV46_(r[idx('Proy 7d min')]), hi7=numV46_(r[idx('Proy 7d max')]);
+    const b30=numV46_(r[idx('Proy 30d base')]), lo30=numV46_(r[idx('Proy 30d min')]), hi30=numV46_(r[idx('Proy 30d max')]);
+    if(!(b24>0||b7>0||b30>0)) return;
+    batch.push([now,asset,price,strV46_(r[idx('Acción')]),numV46_(r[idx('Confianza %')]),strV46_(r[idx('Escenario futuro')]),numV46_(r[idx('Confianza pronóstico')]),
+      b24,lo24,hi24,'','','','', '', b7,lo7,hi7,'','','','', '', b30,lo30,hi30,'','','','', '']);
+  });
+  if(batch.length){
+    const start=sh.getLastRow()+1; sh.getRange(start,1,batch.length,batch[0].length).setValues(batch);
+    sh.getRange(start,1,batch.length,1).setNumberFormat('dd/MM/yyyy HH:mm');
+    [3,8,9,10,11,16,17,18,19,24,25,26,27].forEach(c=>sh.getRange(start,c,batch.length,1).setNumberFormat('$#,##0.########'));
+    [5,7,14,22,30].forEach(c=>sh.getRange(start,c,batch.length,1).setNumberFormat('0.00%'));
+  }
+}
+function directionHitV46_(base,proj,actual){
+  const p=proj-base, a=actual-base;
+  if(Math.abs(a/base)<0.005) return 'NEUTRO';
+  if(Math.abs(p/base)<0.0025) return 'NEUTRO';
+  return (p>0)===(a>0)?'ACIERTO':'FALLO';
+}
+function evalOneForecastV46_(asset,recorded,base,proj,lo,hi,hours){
+  if(!(base>0&&proj>0&&lo>0&&hi>0)) return null;
+  const target=new Date(recorded.getTime()+hours*3600000);
+  const real=historicalPriceV24_(asset,target); if(!(real>0)) return null;
+  return {real,range:(real>=Math.min(lo,hi)&&real<=Math.max(lo,hi))?'DENTRO':'FUERA',dir:directionHitV46_(base,proj,real),err:Math.abs(real-proj)/base,at:new Date()};
+}
+function evaluateForecastHistoryV46_(){
+  const sh=ensureForecastHistoryV46_(); if(sh.getLastRow()<2) return;
+  const vals=sh.getRange(2,1,sh.getLastRow()-1,31).getValues(), now=new Date();
+  vals.forEach((r,i)=>{
+    const row=i+2, rec=r[0] instanceof Date?r[0]:new Date(r[0]), asset=strV46_(r[1]), base=numV46_(r[2]);
+    if(!rec||isNaN(rec)||!asset||!(base>0)) return; const age=(now-rec)/3600000;
+    if(age>=24&&!r[10]){const e=evalOneForecastV46_(asset,rec,base,numV46_(r[7]),numV46_(r[8]),numV46_(r[9]),24);if(e)sh.getRange(row,11,1,5).setValues([[e.real,e.range,e.dir,e.err,e.at]]);}
+    if(age>=168&&!r[18]){const e=evalOneForecastV46_(asset,rec,base,numV46_(r[15]),numV46_(r[16]),numV46_(r[17]),168);if(e)sh.getRange(row,19,1,5).setValues([[e.real,e.range,e.dir,e.err,e.at]]);}
+    if(age>=720&&!r[26]){const e=evalOneForecastV46_(asset,rec,base,numV46_(r[23]),numV46_(r[24]),numV46_(r[25]),720);if(e)sh.getRange(row,27,1,5).setValues([[e.real,e.range,e.dir,e.err,e.at]]);}
+  });
+  const n=sh.getLastRow()-1;if(n>0){[11,19,27].forEach(c=>sh.getRange(2,c,n,1).setNumberFormat('$#,##0.########'));[14,22,30].forEach(c=>sh.getRange(2,c,n,1).setNumberFormat('0.00%'));[15,23,31].forEach(c=>sh.getRange(2,c,n,1).setNumberFormat('dd/MM/yyyy HH:mm'));}
+}
+function buildForecastCalibrationV46_(){
+  const hist=ensureForecastHistoryV46_(), sh=ensureSheetV46_(CT_V46.SHEET_FORECAST_CAL);
+  const headers=['Horizonte','Muestras','Cobertura rango','Acierto dirección','Error medio abs %','Estado','Factor sizing']; ensureHeaderV46_(sh,headers);
+  if(hist.getLastRow()<2){sh.getRange(2,1,3,7).clearContent();return;}
+  const v=hist.getRange(2,1,hist.getLastRow()-1,31).getValues();
+  const defs=[['24h',10,11,12,13],['7d',18,19,20,21],['30d',26,27,28,29]], out=[];
+  defs.forEach(d=>{
+    const rows=v.filter(r=>numV46_(r[d[1]])>0); const n=rows.length;
+    const coverage=n?rows.filter(r=>r[d[2]]==='DENTRO').length/n:0;
+    const dirRows=rows.filter(r=>/ACIERTO|FALLO/.test(strV46_(r[d[3]]))); const dir=dirRows.length?dirRows.filter(r=>r[d[3]]==='ACIERTO').length/dirRows.length:0;
+    const err=n?rows.reduce((s,r)=>s+numV46_(r[d[4]]),0)/n:0;
+    let state=n<8?'APRENDIENDO':(coverage>=.60&&dir>=.55?'ESTABLE':(coverage>=.45?'REVISAR':'DEBIL'));
+    let factor=n<8?0.85:clampV46_(0.65+coverage*.25+dir*.20-err*.50,0.60,1.10);
+    out.push([d[0],n,coverage,dir,err,state,factor]);
+  });
+  sh.getRange(2,1,Math.max(3,sh.getLastRow()-1),7).clearContent(); sh.getRange(2,1,out.length,7).setValues(out);
+  sh.getRange(2,3,out.length,3).setNumberFormat('0.0%');sh.getRange(2,7,out.length,1).setNumberFormat('0.00x');sh.autoResizeColumns(1,7);
+}
+function calibrationFactorV46_(){
+  const sh=SpreadsheetApp.getActive().getSheetByName(CT_V46.SHEET_FORECAST_CAL); if(!sh||sh.getLastRow()<2) return .85;
+  const v=sh.getRange(2,1,sh.getLastRow()-1,7).getValues(); const r=v.find(x=>strV46_(x[0])==='7d')||v[0]; return clampV46_(numV46_(r&&r[6],.85),.60,1.10);
+}
+
+function augmentDynamicSizingV46_(){
+  setupV46Config_(); const ss=SpreadsheetApp.getActive(),dec=ss.getSheetByName('Decisiones'),car=ss.getSheetByName('Cartera'); if(!dec||dec.getLastRow()<2||!car)return;
+  const headers=dec.getRange(1,1,1,dec.getLastColumn()).getDisplayValues()[0]; const ensure=n=>{let i=headers.indexOf(n);if(i>=0)return i+1;dec.insertColumnAfter(dec.getLastColumn());const c=dec.getLastColumn();dec.getRange(1,c).setValue(n);headers.push(n);return c;};
+  const cPct=ensure('Sizing dinámico %'),cUsd=ensure('Sizing dinámico USD'),cUnits=ensure('Sizing dinámico unidades'),cWhy=ensure('Sizing motivo');
+  const h=dec.getRange(1,1,1,dec.getLastColumn()).getDisplayValues()[0],idx=n=>h.indexOf(n),vals=dec.getRange(2,1,dec.getLastRow()-1,dec.getLastColumn()).getValues();
+  const total=car.getLastRow()>1?car.getRange(2,4,car.getLastRow()-1,1).getValues().flat().reduce((s,x)=>s+numV46_(x),0):0;
+  const usdcRow=car.getRange(2,1,Math.max(1,car.getLastRow()-1),4).getValues().find(r=>strV46_(r[0]).toUpperCase()==='USDC'),usdc=usdcRow?numV46_(usdcRow[3]):0;
+  const reservePct=configValueV25_('Sizing: reserva USDC',50)/100,deployable=Math.max(0,usdc-total*reservePct),maxBuy=total*configValueV25_('Sizing: compra max patrimonio',1)/100;
+  const minSell=configValueV25_('Sizing: venta min',5)/100,maxSell=configValueV25_('Sizing: venta max',30)/100,cal=calibrationFactorV46_(); const out=[];
+  vals.forEach(r=>{
+    const action=strV46_(r[idx('Acción')]),asset=strV46_(r[idx('Activo')]),state=strV46_(r[idx('Estado capital')]); const qty=numV46_(r[idx('Cantidad')]),value=numV46_(r[idx('Valor USD')]),price=numV46_(r[idx('Precio mercado')]);
+    const conf=clampV46_(numV46_(r[idx('Confianza %')],.6),.4,.95),score=numV46_(r[idx('Score final')],50),weight=numV46_(r[idx('% cartera')]),target=numV46_(r[idx('Peso objetivo')]);
+    const scenario=strV46_(r[idx('Escenario futuro')]).toUpperCase(),fc=clampV46_(numV46_(r[idx('Confianza pronóstico')],.55),.4,.9); let pct=0,usd=0,units=0,why='Sin operación.';
+    if(action==='ASEGURAR BENEFICIO'||action==='REDUCIR EN REBOTE'||action==='VENDER'){
+      if(action==='VENDER') pct=1; else {
+        pct=action==='ASEGURAR BENEFICIO'?.08:.15; pct+=Math.max(0,conf-.6)*.20; if(/SOLO GANANCIAS/i.test(state)) pct+=.02; if(action==='REDUCIR EN REBOTE'&&/BAJISTA/.test(scenario)) pct+=.05*fc; if(weight>target&&target>0)pct+=.03; pct*=cal; pct=clampV46_(pct,minSell,maxSell);
+      }
+      usd=value*pct;units=qty*pct;why='Venta dimensionada por acción, confianza, estado del capital, peso y calibración histórica ('+Math.round(cal*100)+'%).';
+    } else if(action==='AUMENTAR'||action==='ESPERAR ENTRADA'||action==='COMPRAR'){
+      const base=numV46_(r[idx('Capital sugerido USD')]); let f=.55+conf*.35+(score-50)/200; if(/ALCISTA/.test(scenario))f+=.08*fc;if(/BAJISTA/.test(scenario))f-=.12*fc;f*=cal;f=clampV46_(f,.35,1.0);
+      usd=Math.min(base>0?base:maxBuy,maxBuy,deployable)*f; if(action==='ESPERAR ENTRADA'&&usd>0){}; const entry=parseEntryMidV25_(strV46_(r[idx('Entrada objetivo')])); units=(entry>0?usd/entry:(price>0?usd/price:0)); pct=total>0?usd/total:0;why='Compra dimensionada por liquidez disponible, peso objetivo, confianza, escenario y precisión histórica.';
+    }
+    out.push([pct,Math.round(usd*100)/100,units,why]);
+  });
+  dec.getRange(2,cPct,out.length,1).setValues(out.map(x=>[x[0]])).setNumberFormat('0.0%');dec.getRange(2,cUsd,out.length,1).setValues(out.map(x=>[x[1]])).setNumberFormat('$#,##0.00');dec.getRange(2,cUnits,out.length,1).setValues(out.map(x=>[x[2]])).setNumberFormat('0.########');dec.getRange(2,cWhy,out.length,1).setValues(out.map(x=>[x[3]])).setWrap(true);
+  // Refleja sizing en columnas de propuesta para que el front v4.5 lo use sin cambios.
+  const pPct=idx('Propuesta %')+1,pUsd=idx('Propuesta USD')+1,pUnits=idx('Propuesta unidades')+1,pText=idx('Propuesta operativa')+1;
+  if(pPct>0&&pUsd>0&&pUnits>0){dec.getRange(2,pPct,out.length,1).setValues(out.map(x=>[x[0]])).setNumberFormat('0%');dec.getRange(2,pUsd,out.length,1).setValues(out.map(x=>[x[1]])).setNumberFormat('$#,##0.00');dec.getRange(2,pUnits,out.length,1).setValues(out.map(x=>[x[2]])).setNumberFormat('0.########');
+    if(pText>0){const actions=vals.map(r=>strV46_(r[idx('Acción')]));dec.getRange(2,pText,out.length,1).setValues(out.map((x,i)=>{const a=actions[i],asset=strV46_(vals[i][idx('Activo')]);if(x[1]<=0)return [strV46_(vals[i][idx('Propuesta operativa')])||'Sin operación ahora.'];if(/ASEGURAR|REDUCIR|VENDER/.test(a))return [(a==='REDUCIR EN REBOTE'?'En rebote, ':'')+'vender '+Math.round(x[0]*100)+'%: '+round_(x[2],8)+' '+asset+' (~'+Math.round(x[1])+' USD).'];return [(a==='ESPERAR ENTRADA'?'Si entra en zona, ':'')+'comprar ~'+Math.round(x[1])+' USD (~'+round_(x[2],8)+' '+asset+').'];})).setWrap(true);}
+  }
+}
+
+const HIST_RECON_SEED_V46 = [
+ ['BTC',18535.52,3176.39,5003.41,0,'SOLO GANANCIAS','Alta','Binance / Nexo / YouHodler / CoinDepo','Capital inicial recuperado; rewards/mining separados.'],
+ ['BNB',64.82,4015.92,1975.97,0,'SOLO GANANCIAS','Media-Alta','Binance / Nexo / MetaMask-BSC','Incluye actividad DeFi; gas separado de compras.'],
+ ['ETH',2147.80,1522.35,4582.94,0,'SOLO GANANCIAS','Alta','Binance / Nexo / YouHodler','Capital inicial recuperado.'],
+ ['TRX',0.04313,2052.54,2063.65,0,'SOLO GANANCIAS','Alta','Binance / Nexo / YouHodler / CoinDepo','Capital recuperado; intereses separados.'],
+ ['XRP',0.73093,141.94,1473.71,0,'SOLO GANANCIAS','Alta','Binance / Nexo / YouHodler / CoinDepo','Capital recuperado.'],
+ ['SOL',5.8719,371.41,366.00,0,'SOLO GANANCIAS','Media-Alta','Binance / YouHodler / CoinDepo','Estado solo ganancias confirmado por usuario.'],
+ ['ZEC',134.51,250.00,295.24,0,'SOLO GANANCIAS','Alta','Binance','Capital recuperado.'],
+ ['HBAR',0.18253,192.00,192.00,0,'SOLO GANANCIAS','Alta','Binance','Capital recuperado.'],
+ ['LUNA',0.001369,285.52,50.00,0,'SOLO GANANCIAS','Media','Binance / Terra-Keplr','Estado solo ganancias confirmado; staking/rewards on-chain.'],
+ ['ADA',1.34665,'','','','CAPITAL RECUPERADO / REVISAR','Media','Binance / CoinDepo','Coste medio reconstruido; revisar flujos completos para fiscalidad.'],
+ ['DOT',23.6658,'','','','CAPITAL EN RIESGO','Media','Binance / Nexo','Coste medio reconstruido.'],
+ ['XLM',0.57876,'','','','CAPITAL EN RIESGO','Media','YouHodler / CoinDepo','Intereses separados del capital comprado.'],
+ ['LTC',293.26,'','','','CAPITAL EN RIESGO','Media','YouHodler / Nexo / CoinDepo','Transferencias interplataforma conciliadas parcialmente.'],
+ ['DOGE',0.52388,'','','','CAPITAL EN RIESGO','Media','YouHodler / Binance / CoinDepo','Transferencias identificadas.'],
+ ['SHIB',0.00002762,'','','','CAPITAL EN RIESGO','Media','Binance / CoinDepo','Coste medio reconstruido.'],
+ ['ALGO',0.54340,'','','','CAPITAL EN RIESGO','Media','Binance / CoinDepo','Transferencias identificadas.'],
+ ['RUNE',3.97284,'','','','CAPITAL EN RIESGO','Media','Binance','Coste medio reconstruido.'],
+ ['IOTA',0.60813,'','','','CAPITAL EN RIESGO','Media','Binance','Coste medio reconstruido.'],
+ ['VET',0.17220,'','','','CAPITAL EN RIESGO','Media','Binance','Coste medio reconstruido.'],
+ ['NEO',36.0643,'','','','CAPITAL EN RIESGO','Media','Binance','Coste medio reconstruido.'],
+ ['MANA',2.98675,'','','','CAPITAL EN RIESGO','Media','YouHodler / Binance','Coste medio reconstruido; intereses separados.'],
+ ['GALA',0.17276,'','','','CAPITAL EN RIESGO','Media','YouHodler / Binance','Coste medio reconstruido; intereses separados.'],
+ ['SAND',0.06650,'','','','CAPITAL EN RIESGO','Media','Binance','Coste medio reconstruido.'],
+ ['NEXO',1.48261,'','','','CAPITAL EN RIESGO','Media','Nexo','Compras identificadas separadas de intereses/cashback.'],
+ ['CAKE',14.11,1246.39,200.99,1045.39,'CAPITAL EN RIESGO - RECONSTRUCCION PARCIAL','Media-Alta','MetaMask / PancakeSwap / BSC','88.3227 CAKE comprados directamente; pool/rewards/reinversiones separados.']
+];
+function refreshHistoricalReconciliationV46_(){
+  const ss=SpreadsheetApp.getActive(),car=ss.getSheetByName('Cartera'),sh=ensureSheetV46_(CT_V46.SHEET_HIST_RECON);
+  const headers=['Activo','Cantidad actual','Valor actual USD','Precio medio reconstruido','Compras identificadas USD','Ventas identificadas USD','Capital pendiente USD','Estado capital','Confianza','Fuentes conciliadas','Notas','Última actualización']; ensureHeaderV46_(sh,headers);
+  const cmap={}; if(car&&car.getLastRow()>1){const ch=car.getRange(1,1,1,car.getLastColumn()).getDisplayValues()[0],cv=car.getRange(2,1,car.getLastRow()-1,car.getLastColumn()).getValues(),ai=ch.indexOf('Activo');cv.forEach(r=>{const a=strV46_(r[ai]).toUpperCase();if(a)cmap[a]={qty:numV46_(r[ch.indexOf('Cantidad actual')]),val:numV46_(r[ch.indexOf('Valor actual USD')]),state:strV46_(r[ch.indexOf('Estado capital')])};});}
+  const now=new Date(),rows=HIST_RECON_SEED_V46.map(x=>{const c=cmap[x[0]]||{};return [x[0],c.qty||0,c.val||0,x[1]||'',x[2]||'',x[3]||'',x[4]===''?'':x[4],c.state||x[5],x[6],x[7],x[8],now];});
+  sh.getRange(2,1,Math.max(1,sh.getMaxRows()-1),headers.length).clearContent();sh.getRange(2,1,rows.length,headers.length).setValues(rows);sh.getRange(2,3,rows.length,1).setNumberFormat('$#,##0.00');sh.getRange(2,4,rows.length,1).setNumberFormat('$#,##0.########');sh.getRange(2,5,rows.length,3).setNumberFormat('$#,##0.00');sh.getRange(2,12,rows.length,1).setNumberFormat('dd/MM/yyyy HH:mm');sh.setColumnWidth(10,300);sh.setColumnWidth(11,420);
+}
+
+function runForecastCalibrationV46(){evaluateForecastHistoryV46_();buildForecastCalibrationV46_();SpreadsheetApp.getActive().toast('Calibración de pronósticos actualizada','Crypto Tracker',4);}
+function runDynamicSizingV46(){augmentDynamicSizingV46_();SpreadsheetApp.getActive().toast('Sizing dinámico actualizado','Crypto Tracker',4);}
+function runHistoricalReconciliationV46(){refreshHistoricalReconciliationV46_();SpreadsheetApp.getActive().toast('Conciliación histórica actualizada','Crypto Tracker',4);}
+function repairV46(){
+  try{repairV45();}catch(e){console.log('repairV45: '+e.message);} setupV46Config_(); ensureForecastHistoryV46_(); refreshHistoricalReconciliationV46_(); augmentForecastsV43_(); augmentDynamicSizingV46_(); appendForecastHistoryV46_(); evaluateForecastHistoryV46_(); buildForecastCalibrationV46_(); SpreadsheetApp.getActive().toast('v4.6 preparada: calibración + sizing + conciliación','Crypto Tracker',6);
+}
+
+
+// ===== v4.7: registro de operaciones reales =====
+const CT_V47={SHEET_OPERATIONS:'Operaciones ejecutadas'};
+function ensureOperationsV47_(){
+ const ss=SpreadsheetApp.getActive(); let sh=ss.getSheetByName(CT_V47.SHEET_OPERATIONS); if(!sh) sh=ss.insertSheet(CT_V47.SHEET_OPERATIONS);
+ const headers=['ID operación','Fecha ejecución','Activo','Tipo','Origen','Recomendación original','Recomendado %','Recomendado unidades','Recomendado USD','Ejecutado %','Ejecutado unidades','Precio ejecución','Ejecutado USD','Diferencia vs recomendado USD','Motivo','Estado','Plataforma / Wallet','Tx / Referencia','Aplicada a cartera','Estado conciliación','Observaciones','Fecha registro'];
+ const cur=sh.getLastColumn()?sh.getRange(1,1,1,Math.min(sh.getLastColumn(),headers.length)).getDisplayValues()[0]:[];
+ if(sh.getLastRow()===0 || cur.join('|')!==headers.slice(0,cur.length).join('|') || cur.length!==headers.length){sh.clear();sh.getRange(1,1,1,headers.length).setValues([headers]);}
+ sh.setFrozenRows(1);sh.getRange(1,1,1,headers.length).setFontWeight('bold').setBackground('#14243a').setFontColor('#ffffff');
+ sh.setColumnWidths(1,headers.length,120);sh.setColumnWidth(6,190);sh.setColumnWidth(15,260);sh.setColumnWidth(21,260);return sh;
+}
+function repairV47(){try{repairV46();}catch(e){console.log('repairV46: '+e.message);}ensureOperationsV47_();SpreadsheetApp.getActive().toast('v4.7 preparada: operaciones reales','Crypto Tracker',5);}
+function registerOperationV47(payload){
+ payload=payload||{}; const ss=SpreadsheetApp.getActive(),sh=ensureOperationsV47_();
+ const asset=String(payload.asset||'').trim().toUpperCase(),type=String(payload.type||'').trim().toUpperCase(); if(!asset)throw new Error('Falta el activo.'); if(!['COMPRA','VENTA'].includes(type))throw new Error('Tipo inválido.');
+ const car=ss.getSheetByName('Cartera'); if(!car)throw new Error('No existe Cartera.'); const ch=car.getRange(1,1,1,car.getLastColumn()).getDisplayValues()[0],vals=car.getRange(2,1,Math.max(1,car.getLastRow()-1),car.getLastColumn()).getValues(),ai=ch.indexOf('Activo');
+ let rowIdx=-1,row=null;for(let i=0;i<vals.length;i++){if(String(vals[i][ai]||'').trim().toUpperCase()===asset){rowIdx=i+2;row=vals[i];break;}}
+ const idx=n=>ch.indexOf(n),oldQty=row&&idx('Cantidad actual')>=0?Number(row[idx('Cantidad actual')])||0:0,oldVal=row&&idx('Valor actual USD')>=0?Number(row[idx('Valor actual USD')])||0:0;
+ let price=Number(payload.price)||0;if(!(price>0)){const m=ss.getSheetByName('Mercado');if(m&&m.getLastRow()>1){const mh=m.getRange(1,1,1,m.getLastColumn()).getDisplayValues()[0],mv=m.getRange(2,1,m.getLastRow()-1,m.getLastColumn()).getValues(),ma=mh.indexOf('Activo'),mp=mh.indexOf('Precio mercado USD');for(const r of mv){if(String(r[ma]||'').trim().toUpperCase()===asset){price=Number(r[mp])||0;break;}}}} if(!(price>0))throw new Error('Falta precio de ejecución válido.');
+ const mode=String(payload.mode||'USD').toUpperCase(),amount=Number(payload.amount)||0;if(!(amount>0))throw new Error('El importe debe ser mayor que 0.');let execUsd=0,execUnits=0,execPct=0;
+ if(mode==='USD'){execUsd=amount;execUnits=amount/price;execPct=oldVal>0?execUsd/oldVal:0;}else if(mode==='UNIDADES'){execUnits=amount;execUsd=amount*price;execPct=oldQty>0?execUnits/oldQty:0;}else if(mode==='PORCENTAJE'){execPct=amount>1?amount/100:amount;if(!(oldQty>0))throw new Error('No hay cantidad actual para usar porcentaje.');execUnits=oldQty*execPct;execUsd=execUnits*price;}else throw new Error('Modo inválido.');
+ if(type==='VENTA'&&execUnits>oldQty+1e-10)throw new Error('La venta supera la cantidad registrada.');
+ const recPct=Number(payload.recommendedPct)||0,recUnits=Number(payload.recommendedUnits)||0,recUsd=Number(payload.recommendedUsd)||0,id='OP-'+Utilities.getUuid().slice(0,8).toUpperCase(),apply=payload.applyToPortfolio!==false,origin=String(payload.origin||'MANUAL').toUpperCase();
+ sh.appendRow([id,payload.date?new Date(payload.date):new Date(),asset,type,origin,String(payload.recommendation||''),recPct,recUnits,recUsd,execPct,execUnits,price,execUsd,execUsd-recUsd,String(payload.reason||''),apply?'APLICADA':'REGISTRADA',String(payload.platform||''),String(payload.reference||''),apply?'SI':'NO',String(payload.reference||'').trim()?'PENDIENTE MATCH':'PENDIENTE REFERENCIA',String(payload.notes||''),new Date()]);
+ const lr=sh.getLastRow();sh.getRange(lr,2).setNumberFormat('dd/MM/yyyy HH:mm');sh.getRange(lr,7).setNumberFormat('0.0%');sh.getRange(lr,10).setNumberFormat('0.0%');sh.getRange(lr,9).setNumberFormat('$#,##0.00');sh.getRange(lr,12,1,3).setNumberFormat('$#,##0.00');sh.getRange(lr,22).setNumberFormat('dd/MM/yyyy HH:mm');
+ if(apply&&rowIdx>0)applyOperationToPortfolioV47_(car,ch,rowIdx,type,execUnits,execUsd,price); return {ok:true,id,asset,type,execPct,execUnits,execUsd,price,status:apply?'APLICADA':'REGISTRADA'};
+}
+function applyOperationToPortfolioV47_(car,ch,rowIdx,type,units,usd,price){
+ const c=n=>ch.indexOf(n)+1,qtyCol=c('Cantidad actual'),valCol=c('Valor actual USD');if(qtyCol<=0)return;const oldQty=Number(car.getRange(rowIdx,qtyCol).getValue())||0,newQty=type==='COMPRA'?oldQty+units:Math.max(0,oldQty-units);car.getRange(rowIdx,qtyCol).setValue(newQty).setNote('Actualizado por operación manual v4.7. El coste histórico reconstruido no se recalcula automáticamente; conciliar después con el extracto de la plataforma.');if(valCol>0)car.getRange(rowIdx,valCol).setValue(newQty*price);
+ const buyCol=c('Coste compras identificado USD'),sellCol=c('Ingresos ventas identificados USD'),pendCol=c('Capital pendiente recuperar USD'),stateCol=c('Estado capital');
+ if(type==='COMPRA'){if(buyCol>0)car.getRange(rowIdx,buyCol).setValue((Number(car.getRange(rowIdx,buyCol).getValue())||0)+usd);if(pendCol>0)car.getRange(rowIdx,pendCol).setValue((Number(car.getRange(rowIdx,pendCol).getValue())||0)+usd);if(stateCol>0&&/SOLO GANANCIAS/i.test(String(car.getRange(rowIdx,stateCol).getValue()||'')))car.getRange(rowIdx,stateCol).setValue('CAPITAL REINVERTIDO');}
+ else {if(sellCol>0)car.getRange(rowIdx,sellCol).setValue((Number(car.getRange(rowIdx,sellCol).getValue())||0)+usd);if(pendCol>0){const p=Number(car.getRange(rowIdx,pendCol).getValue())||0;car.getRange(rowIdx,pendCol).setValue(Math.max(0,p-usd));}}
+}
+function getRecentOperationsV47_(limit){const ss=SpreadsheetApp.getActive(),sh=ss.getSheetByName(CT_V47.SHEET_OPERATIONS);if(!sh||sh.getLastRow()<2)return[];const h=sh.getRange(1,1,1,sh.getLastColumn()).getDisplayValues()[0],v=sh.getRange(2,1,sh.getLastRow()-1,sh.getLastColumn()).getValues(),i=n=>h.indexOf(n);return v.slice(-Math.max(1,limit||20)).reverse().map(r=>({id:r[i('ID operación')],date:r[i('Fecha ejecución')],asset:r[i('Activo')],type:r[i('Tipo')],origin:r[i('Origen')],recommendedUsd:Number(r[i('Recomendado USD')])||0,executedPct:Number(r[i('Ejecutado %')])||0,executedUnits:Number(r[i('Ejecutado unidades')])||0,price:Number(r[i('Precio ejecución')])||0,executedUsd:Number(r[i('Ejecutado USD')])||0,platform:r[i('Plataforma / Wallet')],reference:r[i('Tx / Referencia')],status:r[i('Estado')],reconciliation:r[i('Estado conciliación')]}));}
