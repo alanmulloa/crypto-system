@@ -25,7 +25,6 @@ class BacktestConfig:
     max_holding_ms: int = 24 * 60 * 60 * 1000
     outcome_interval: str = "1h"
     require_entry_range: bool = True
-    allow_sell_hypotheses: bool = False
 
     def __post_init__(self) -> None:
         if self.initial_cash_usd <= 0:

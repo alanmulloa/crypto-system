@@ -1,7 +1,5 @@
 from dataclasses import replace
 
-import pytest
-
 from app.evaluation import (
     BacktestConfig,
     BacktestExitReason,
