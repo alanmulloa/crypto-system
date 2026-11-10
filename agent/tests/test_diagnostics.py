@@ -1,5 +1,7 @@
 from dataclasses import replace
 
+import pytest
+
 from app.evaluation.diagnostics import (
     DiagnosticConfig,
     StrategyDiagnostics,
@@ -138,8 +140,8 @@ def test_mfe_mae_and_times_use_only_future_path():
         candles=candles,
     )
     assert item is not None
-    assert item.public.mfe_pct == 5.0
-    assert item.public.mae_pct == 3.0
+    assert item.public.mfe_pct == pytest.approx(5.0)
+    assert item.public.mae_pct == pytest.approx(3.0)
     assert item.public.time_to_mfe_ms == 2 * HOUR - 1
     assert item.public.time_to_mae_ms == 3 * HOUR - 1
 
@@ -157,8 +159,8 @@ def test_no_lookahead_before_signal_is_ignored():
         candles=candles,
     )
     assert item is not None
-    assert item.public.mfe_pct == 2.0
-    assert item.public.mae_pct == 2.0
+    assert item.public.mfe_pct == pytest.approx(2.0)
+    assert item.public.mae_pct == pytest.approx(2.0)
 
 
 def test_partial_horizons_are_not_fabricated():
@@ -187,7 +189,7 @@ def test_fees_and_slippage_reduce_fixed_horizon_return():
     costly = analyzer(fees=10, slippage=5)
     clean_return = clean._net_trade(100, 102)[1]
     costly_return = costly._net_trade(100, 102)[1]
-    assert clean_return == 2.0
+    assert clean_return == pytest.approx(2.0)
     assert costly_return < clean_return
 
 
@@ -249,7 +251,7 @@ def test_atr_stop_target_sensitivity_uses_point_atr():
     )
     assert item is not None
     result = analyzer()._atr_return(item, stop_atr=1.0, target_atr=1.0)
-    assert result == 2.0
+    assert result == pytest.approx(2.0)
 
 
 def test_sell_is_never_converted_to_short():
