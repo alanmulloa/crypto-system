@@ -29,7 +29,7 @@
 - mean_reversion WATCH outcomes identified as the primary research lead
 - no approval for Testnet
 
-### Phase 5F - Strategy diagnostics & exit research
+### Phase 5F - Strategy diagnostics & exit research ✅
 - path-level MFE / MAE and timing
 - current-exit diagnostics
 - fixed-horizon comparison
@@ -38,9 +38,23 @@
 - observed OOS treated as descriptive only
 - no strategy rule changes
 - no Testnet or execution
+- review conclusion: no stable exit-only variant justified
+- Phase 5G deferred pending entry-quality evidence
 
-### Phase 5G - Experimental variant (only if justified)
-- define one narrow research variant from calibration/validation evidence
+### Phase 5F.1 - Mean Reversion entry-quality diagnostics
+- inspect only features available at signal time
+- score / confidence bands
+- normalized volatility context
+- oversold depth / distance from mean
+- momentum and slope context
+- multi-timeframe alignment
+- symbol behavior
+- repeated-signal clustering and cooldown candidates
+- calibration + validation only for candidate selection
+- previously observed OOS remains descriptive only
+
+### Phase 5G - Experimental variant (deferred)
+- define one narrow research variant only if 5F.1 supports it
 - validate on genuinely unseen future data or prospective paper observations
 
 ## Phase 6 - Binance Spot Testnet

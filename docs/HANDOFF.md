@@ -1,4 +1,4 @@
-# HANDOFF - Crypto System after Phase 5F tooling
+# HANDOFF - Crypto System after Phase 5F evidence review
 
 ## Current state
 
@@ -11,58 +11,62 @@ Phase 5 includes:
 - 5C chronological validation;
 - 5D real Binance public-history evidence runner;
 - 5E evidence review;
-- 5F strategy diagnostics and exit research tooling.
+- 5F strategy diagnostics and exit research tooling;
+- 5F evidence review completed.
 
-## Evidence conclusion before 5F
+## Phase 5F conclusion
 
-The 730-day run across BTCUSDT, ETHUSDT, BNBUSDT, SOLUSDT and XRPUSDT showed
-negative aggregate OOS backtest results for all five current strategies.
+The 730-day Mean Reversion diagnostic run does **not** justify a Phase 5G exit-tuning
+variant.
 
-Mean Reversion remains the main research lead because WATCH outcomes showed a positive
-directional signal while realized backtest mechanics remained negative.
+Across all five symbols, pooled net expectancy per $100 research observation was:
 
-This is a research hypothesis, not an approved strategy.
+- calibration current exit: -0.426 USD;
+- calibration best fixed horizon (4h): -0.324 USD;
+- validation 24h: +0.267 USD;
+- validation 48h: +1.206 USD;
+- observed OOS 24h: -0.178 USD;
+- observed OOS 48h: -0.434 USD.
 
-## Phase 5F CLI
+The validation improvement at longer horizons is not present in calibration and does not
+persist in the already-observed OOS period.
 
-From `agent/`:
+ATR sensitivity also fails to identify a stable positive configuration:
 
-```bash
-python -m app.evaluation.diagnostics_cli \
-  --days 730 \
-  --symbols BTCUSDT ETHUSDT BNBUSDT SOLUSDT XRPUSDT \
-  --strategy mean_reversion \
-  --max-points 8000 \
-  --output reports/phase5f-mean-reversion.json
-```
+- best pooled calibration: stop 1.0 ATR / target 0.75 ATR, -0.320 USD;
+- best pooled validation: stop 2.0 ATR / target 2.0 ATR, -0.042 USD.
 
-Defaults:
+Many stopped paths later recover, but changing the exit alone does not solve the
+negative calibration evidence.
 
-- public Binance Spot market data only;
-- fee 10 bps;
-- slippage 5 bps;
-- 24h current-exit horizon;
-- 48h research path;
-- up to 25 individual path examples per segment in JSON.
+## Decision
+
+Phase 5G is deferred.
+
+The next task is Phase 5F.1: diagnose Mean Reversion **entry quality** using only
+information available at signal time.
+
+Do not select an entry feature using future path information.
+
+Candidate research dimensions:
+
+- score / confidence;
+- normalized volatility;
+- oversold depth / distance from mean;
+- momentum / slope;
+- multi-timeframe alignment;
+- symbol-specific behavior;
+- consecutive-signal clustering / cooldown.
 
 ## Methodological boundary
 
 The previous OOS segment has already been observed.
 
-Do not tune against it and then label it OOS again.
+It remains descriptive only and cannot become a fresh OOS test after parameter
+selection.
 
-ATR sensitivity rows on OOS are descriptive and carry
-`research_eligible=false`.
-
-Any selected experimental configuration must later be tested on genuinely unseen
-future data or prospectively.
-
-## Strategy integrity
-
-Phase 5F does not modify the generation rules in
-`agent/app/strategies/mean_reversion.py` or any other strategy.
-
-It adds diagnostics only.
+Any eventual Phase 5G candidate must be selected from calibration + validation and then
+tested on genuinely unseen future data or prospectively.
 
 ## Security boundary
 
@@ -78,7 +82,6 @@ Still absent:
 
 ## Next task
 
-Run Phase 5F on the same 730-day public dataset, inspect the JSON, and decide whether
-there is enough evidence to define one narrow Phase 5G experimental variant.
+Implement Phase 5F.1 entry-quality diagnostics for Mean Reversion.
 
-Do not start Phase 6 from the Phase 5F tooling alone.
+Do not start Phase 6.
