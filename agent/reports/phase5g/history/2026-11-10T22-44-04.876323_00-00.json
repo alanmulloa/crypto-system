@@ -1,0 +1,49 @@
+{
+  "as_of_ms": 1794350619585,
+  "baseline": {
+    "average_net_return_pct": null,
+    "cohort": "baseline",
+    "matured": 0,
+    "median_net_return_pct": null,
+    "observations": 0,
+    "pending": 0,
+    "positive_return_rate_pct": null
+  },
+  "candidate": {
+    "description": "XRPUSDT Mean Reversion WATCH BUY with 1h volume ratio <= 0.75",
+    "feature": "volume_ratio_1h",
+    "name": "xrp_low_volume_1h",
+    "operator": "<=",
+    "symbol": "XRPUSDT",
+    "value": 0.75
+  },
+  "candidate_summary": {
+    "average_net_return_pct": null,
+    "cohort": "candidate",
+    "matured": 0,
+    "median_net_return_pct": null,
+    "observations": 0,
+    "pending": 0,
+    "positive_return_rate_pct": null
+  },
+  "frozen_at_ms": 1794348615195,
+  "metadata": {
+    "created_at": "2026-11-10T22:44:04.876323+00:00",
+    "lookback_days_for_indicators": 90,
+    "phase": "5G-prospective",
+    "public_binance_only": true,
+    "research_only": true
+  },
+  "methodological_warnings": [
+    "Only signal timestamps strictly after the frozen cutoff are included.",
+    "Pre-freeze candles may be used only as indicator lookback.",
+    "The candidate is frozen to XRPUSDT volume_ratio_1h <= 0.75.",
+    "sample_ready is not an approval or automatic promotion rule.",
+    "This module cannot place orders and does not use private Binance APIs."
+  ],
+  "min_matured_observations": 20,
+  "observations": [],
+  "outcome_hours": 24,
+  "sample_ready": false,
+  "uplift_vs_baseline_pct_points": null
+}
