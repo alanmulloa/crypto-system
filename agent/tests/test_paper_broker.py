@@ -1,3 +1,4 @@
+import pytest
 from datetime import datetime, timezone
 
 from app.execution import (
@@ -27,9 +28,9 @@ def test_market_buy_applies_deterministic_slippage_and_fee():
     )
     assert order.status is PaperOrderStatus.FILLED
     assert order.fill is not None
-    assert order.fill.price == 100.5
-    assert order.fill.fee_usd == 0.1
-    assert broker.account.cash_usd == 899.9
+    assert order.fill.price == pytest.approx(100.5)
+    assert order.fill.fee_usd == pytest.approx(0.1)
+    assert broker.account.cash_usd == pytest.approx(899.9)
     assert broker.account.position_for("BTCUSDT").quantity > 0
 
 
@@ -61,10 +62,10 @@ def test_sell_realizes_pnl_and_resets_closed_position():
     )
     assert sell.status is PaperOrderStatus.FILLED
     assert sell.fill is not None
-    assert sell.fill.realized_pnl_usd == 40
-    assert broker.account.realized_pnl_usd == 40
+    assert sell.fill.realized_pnl_usd == pytest.approx(40)
+    assert broker.account.realized_pnl_usd == pytest.approx(40)
     assert broker.account.position_for("ETHUSDT").quantity == 0
-    assert broker.daily_realized_pnl(NOW) == 40
+    assert broker.daily_realized_pnl(NOW) == pytest.approx(40)
 
 
 def test_idempotent_submit_returns_same_order_without_double_fill():
@@ -133,7 +134,7 @@ def test_limit_buy_remains_open_until_market_crosses_limit():
     updates = broker.process_price("BTCUSDT", market_price=94, now=NOW)
     assert len(updates) == 1
     assert updates[0].status is PaperOrderStatus.FILLED
-    assert updates[0].fill.price == 94
+    assert updates[0].fill.price == pytest.approx(94)
 
 
 def test_limit_price_caps_adverse_slippage():
@@ -151,7 +152,7 @@ def test_limit_price_caps_adverse_slippage():
         now=NOW,
     )
     assert order.fill is not None
-    assert order.fill.price == 100
+    assert order.fill.price == pytest.approx(100)
 
 
 def test_sell_cannot_exceed_paper_position():
@@ -185,7 +186,7 @@ def test_insufficient_cash_rejects_buy_without_mutating_account():
         now=NOW,
     )
     assert order.status is PaperOrderStatus.REJECTED
-    assert broker.account.cash_usd == 50
+    assert broker.account.cash_usd == pytest.approx(50)
     assert broker.account.position_for("BTCUSDT").quantity == 0
 
 
