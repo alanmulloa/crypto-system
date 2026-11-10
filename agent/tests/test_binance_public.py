@@ -1,4 +1,5 @@
 import json
+import os
 import unittest
 from http.client import IncompleteRead
 from unittest.mock import patch
@@ -22,6 +23,14 @@ class FakeResponse:
 
 
 class BinancePublicClientTest(unittest.TestCase):
+    def test_market_base_url_can_be_overridden_by_environment(self):
+        with patch.dict(
+            os.environ,
+            {"BINANCE_MARKET_BASE_URL": "https://data-api.binance.vision"},
+        ):
+            client = BinancePublicClient()
+        self.assertEqual(client.base_url, "https://data-api.binance.vision")
+
     def test_parses_exchange_tickers_and_klines_with_mock_transport(self):
         def transport(path, params):
             if path.endswith("exchangeInfo"):

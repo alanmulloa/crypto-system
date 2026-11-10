@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http.client import IncompleteRead, RemoteDisconnected
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
@@ -37,7 +38,12 @@ def _unix_time_ms() -> int:
 
 @dataclass
 class BinancePublicClient:
-    base_url: str = BINANCE_PUBLIC_BASE_URL
+    base_url: str = field(
+        default_factory=lambda: os.getenv(
+            "BINANCE_MARKET_BASE_URL",
+            BINANCE_PUBLIC_BASE_URL,
+        )
+    )
     timeout_seconds: float = 10.0
     max_retries: int = 3
     backoff_seconds: float = 0.5

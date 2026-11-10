@@ -33,6 +33,8 @@ jobs:
       - run: pytest -q
 
       - name: Generate fresh public-Binance report
+        env:
+          BINANCE_MARKET_BASE_URL: https://data-api.binance.vision
         run: |
           python -m app.evaluation.prospective_candidate_cli \
             --output reports/phase5g/fresh.json
