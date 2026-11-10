@@ -1,40 +1,49 @@
-# HANDOFF - Crypto System after Phase 4A
+# HANDOFF - Crypto System after Phase 4B
 
 ## Current state
 
-Phases 1-3 are complete. Phase 4A adds a deterministic in-memory Paper Broker.
+Phases 1-3 are complete. Phase 4A provides a deterministic Paper Broker. Phase 4B adds the risk-gated orchestration and durable paper persistence boundary.
 
-It can simulate MARKET/LIMIT orders, cash, positions, fees, slippage and realized PnL.
+## Safety path
 
-It is **not connected** to strategies or real exchange APIs.
+A strategy cannot call the broker directly through the orchestration path.
 
-## Paper Broker boundary
+The required chain is:
 
-`agent/app/execution/paper.py`
+`AggregatedAssessment -> PortfolioRiskDecision -> PaperExecutionIntent -> PaperExecutionOrchestrator -> PaperBroker`
 
-The class performs no network I/O.
+Only an APPROVED risk decision can create a paper BUY.
 
-There is no execution API route.
+The requested notional is capped by the Risk Manager authorization.
 
-No Binance API key is read or used.
+## Restart safety
 
-## Idempotency
+Idempotency is checked in the repository before a broker call. This protects against process restarts creating a duplicate simulated fill.
 
-Every paper order requires a unique idempotency key. Exact replay returns the original order; conflicting reuse raises.
+## Persistence
 
-## Accounting
+Migration:
 
-- BUY fees enter average cost.
-- SELL fees reduce net proceeds.
-- realized PnL is recorded per fill.
-- daily realized PnL can be queried from paper fills.
+`supabase/migrations/006_paper_execution.sql`
 
-This gives the next phase a trustworthy daily-loss signal for the simulated account.
+adds durable idempotency/risk metadata to paper orders and realized PnL to fills.
 
-## Next task - Phase 4B
+## Still not active automatically
 
-Add an orchestration boundary that accepts only an approved portfolio RiskDecision and turns it into a PaperOrderRequest.
+There is no scheduler and no execution API route.
 
-Persist paper orders/fills/trades through repository interfaces backed by Supabase.
+Nothing in Phase 4B automatically converts a WATCH into an order.
 
-Do not add Binance private APIs yet.
+No Binance private API exists.
+
+## Next task - Phase 4C
+
+Build a disabled-by-default end-to-end paper loop, including paper account state and realized-PnL feedback into hard risk.
+
+The end-to-end tests must prove:
+
+- kill switch stops the loop;
+- daily loss stops new paper buys;
+- duplicate cycles cannot double-fill;
+- no WAIT/REJECT state creates an order;
+- maximum notional cannot be exceeded.

@@ -1,3 +1,9 @@
+from app.execution.orchestrator import (
+    InMemoryPaperExecutionRepository,
+    NullPaperExecutionRepository,
+    PaperExecutionIntent,
+    PaperExecutionOrchestrator,
+)
 from app.execution.paper import (
     PaperAccount,
     PaperBroker,
@@ -11,8 +17,12 @@ from app.execution.paper import (
 )
 
 __all__ = [
+    "InMemoryPaperExecutionRepository",
+    "NullPaperExecutionRepository",
     "PaperAccount",
     "PaperBroker",
+    "PaperExecutionIntent",
+    "PaperExecutionOrchestrator",
     "PaperFill",
     "PaperOrder",
     "PaperOrderRequest",
