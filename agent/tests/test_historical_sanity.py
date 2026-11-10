@@ -9,19 +9,27 @@ INTERVAL_MS = {
     "1d": 24 * 60 * 60 * 1000,
 }
 
+CANDLES_PER_DAY = {
+    "15m": 96,
+    "1h": 24,
+    "4h": 6,
+    "1d": 1,
+}
 
-def make_series(interval: str, count: int, *, start=100.0, step=0.25, future_shock_at=None):
+
+def make_series(interval: str, count: int, *, start=100.0, step=0.02, shock_after_ms=None):
     duration = INTERVAL_MS[interval]
     candles = []
     price = start
     for i in range(count):
+        close_time_ms = (i + 1) * duration - 1
         local_step = step
-        if future_shock_at is not None and i >= future_shock_at:
-            local_step = -5.0
+        if shock_after_ms is not None and close_time_ms > shock_after_ms:
+            local_step = -1.0
         open_price = price
         close = max(1.0, price + local_step)
-        high = max(open_price, close) + 0.6
-        low = max(0.1, min(open_price, close) - 0.6)
+        high = max(open_price, close) + 0.15
+        low = max(0.1, min(open_price, close) - 0.15)
         candles.append(
             Candle(
                 open_time_ms=i * duration,
@@ -29,9 +37,9 @@ def make_series(interval: str, count: int, *, start=100.0, step=0.25, future_sho
                 high=high,
                 low=low,
                 close=close,
-                volume=1000 + i * 3,
-                close_time_ms=(i + 1) * duration - 1,
-                quote_volume=(1000 + i * 3) * close,
+                volume=1000 + i * 0.5,
+                close_time_ms=close_time_ms,
+                quote_volume=(1000 + i * 0.5) * close,
                 trades=100 + i,
             )
         )
@@ -39,12 +47,12 @@ def make_series(interval: str, count: int, *, start=100.0, step=0.25, future_sho
     return candles
 
 
-def market_history(count=180, *, future_shock_at=None):
+def market_history(days=90, *, shock_after_ms=None):
     return {
         interval: make_series(
             interval,
-            count,
-            future_shock_at=future_shock_at,
+            days * CANDLES_PER_DAY[interval],
+            shock_after_ms=shock_after_ms,
         )
         for interval in ("15m", "1h", "4h", "1d")
     }
@@ -52,8 +60,8 @@ def market_history(count=180, *, future_shock_at=None):
 
 def test_future_candles_do_not_change_assessment_at_existing_timestamp():
     runner = HistoricalSanityRunner(min_candles=60)
-    history = market_history(180)
-    cutoff = history["1h"][100].close_time_ms
+    history = market_history(90)
+    cutoff = 70 * INTERVAL_MS["1d"] - 1
 
     baseline = runner.build_candidate(
         symbol="BTCUSDT",
@@ -66,7 +74,7 @@ def test_future_candles_do_not_change_assessment_at_existing_timestamp():
     baseline_assessments = runner.strategy_engine.evaluate(baseline)
     baseline_aggregate = runner.aggregator.aggregate(baseline_assessments)
 
-    shocked = market_history(180, future_shock_at=120)
+    shocked = market_history(90, shock_after_ms=cutoff)
     changed_future = runner.build_candidate(
         symbol="BTCUSDT",
         base_asset="BTC",
@@ -85,12 +93,13 @@ def test_future_candles_do_not_change_assessment_at_existing_timestamp():
 
 def test_runner_only_emits_points_after_all_timeframes_have_warmup():
     runner = HistoricalSanityRunner(min_candles=60)
-    history = market_history(100)
+    history = market_history(70)
     points = runner.run(
         symbol="BTCUSDT",
         base_asset="BTC",
         quote_asset="USDT",
         candles_by_interval=history,
+        max_points=50,
     )
     assert points
     for point in points:
@@ -99,13 +108,13 @@ def test_runner_only_emits_points_after_all_timeframes_have_warmup():
 
 def test_runner_is_deterministic():
     runner = HistoricalSanityRunner(min_candles=60)
-    history = market_history(120)
+    history = market_history(70)
     kwargs = dict(
         symbol="BTCUSDT",
         base_asset="BTC",
         quote_asset="USDT",
         candles_by_interval=history,
-        max_points=30,
+        max_points=20,
     )
     first = runner.run(**kwargs)
     second = runner.run(**kwargs)
@@ -118,8 +127,8 @@ def test_summary_counts_all_points_and_strategies():
         symbol="BTCUSDT",
         base_asset="BTC",
         quote_asset="USDT",
-        candles_by_interval=market_history(120),
-        max_points=25,
+        candles_by_interval=market_history(70),
+        max_points=20,
     )
     report = summarize(points)
     assert report.points == len(points)
@@ -137,7 +146,7 @@ def test_summary_counts_all_points_and_strategies():
 
 def test_missing_timeframe_produces_no_candidate():
     runner = HistoricalSanityRunner(min_candles=60)
-    history = market_history(100)
+    history = market_history(70)
     history.pop("1d")
     candidate = runner.build_candidate(
         symbol="BTCUSDT",
