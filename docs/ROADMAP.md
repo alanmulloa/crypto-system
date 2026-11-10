@@ -57,11 +57,20 @@
 - XRPUSDT volume_ratio_1h <= 0.75 is the strongest asset-specific research lead
 - ETHUSDT 4h lower-highs/lower-lows is a weaker secondary lead
 
-### Phase 5G - Experimental entry variant (deferred)
-- do not create a general Mean Reversion variant yet
-- next research should test one narrow asset-specific candidate against the unchanged baseline
-- use calibration/validation for design only
-- require genuinely unseen future or prospective evidence before any promotion
+### Phase 5F.2 - Mean Reversion candidate experiment 🔬
+- predetermined XRPUSDT low-1h-volume candidate
+- ETHUSDT 4h lower-highs/lower-lows comparator
+- baseline vs candidate metrics by temporal segment
+- calibration + validation determine eligibility
+- observed OOS remains descriptive only
+- no production strategy changes
+- no Testnet or execution
+
+### Phase 5G - Prospective experimental variant (deferred)
+- only freeze one candidate if 5F.2 passes its predefined screen
+- require genuinely unseen future or prospective paper evidence
+- do not reuse the already observed OOS period
+- no promotion to Testnet without new evidence
 
 ## Phase 6 - Binance Spot Testnet
 - only after new unseen evidence supports progression

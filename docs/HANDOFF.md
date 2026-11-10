@@ -85,9 +85,24 @@ Still absent:
 - leverage;
 - withdrawals.
 
+## Phase 5F.2 tooling
+
+Phase 5F.2 compares two predetermined research candidates against the unchanged
+Mean Reversion baseline:
+
+- primary: XRPUSDT with `volume_ratio_1h <= 0.75`;
+- comparator: ETHUSDT with
+  `structure_4h == lower_highs_lower_lows`.
+
+The report includes sample count, coverage, average and median 24h return,
+positive-return rate, and uplift versus baseline for calibration, validation and
+descriptive OOS.
+
+Only calibration and validation can determine whether a candidate is eligible
+for a future prospective test. OOS cannot change that flag.
+
 ## Next task
 
-Design a research-only Phase 5F.2/5G candidate experiment for the XRPUSDT low-volume
-entry condition against the unchanged Mean Reversion baseline.
+Run the Phase 5F.2 CLI on the same 730-day dataset and review the generated JSON.
 
 Do not start Phase 6.
