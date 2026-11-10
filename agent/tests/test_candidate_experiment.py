@@ -98,8 +98,14 @@ def test_xrp_candidate_compares_against_segment_baseline():
 
 def test_oos_never_changes_candidate_selection():
     candidate = DEFAULT_CANDIDATES[0]
-    cal = (snapshot(result=2),)
-    val = (snapshot(segment="validation", result=3),)
+    cal = (
+        snapshot(volume=0.5, result=2),
+        snapshot(volume=1.2, result=-1),
+    )
+    val = (
+        snapshot(segment="validation", volume=0.5, result=3),
+        snapshot(segment="validation", volume=1.2, result=-1),
+    )
     bad_oos = (snapshot(segment="out_of_sample", result=-50),)
     good_oos = (replace(bad_oos[0], net_return_pct=50, positive_return=True),)
 
