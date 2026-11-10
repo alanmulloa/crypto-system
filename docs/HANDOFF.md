@@ -101,8 +101,48 @@ descriptive OOS.
 Only calibration and validation can determine whether a candidate is eligible
 for a future prospective test. OOS cannot change that flag.
 
+## Phase 5F.2 review
+
+The reviewed Phase 5F.2 artifact confirms the XRP candidate passed the predefined
+calibration/validation screen:
+
+- calibration: 55 observations, +0.1651% average 24h net return, +0.5175 pp uplift;
+- validation: 27 observations, +0.9975% average 24h net return, +0.5865 pp uplift.
+
+The ETH comparator also passed mechanically, but validation uplift was only
++0.0114 pp and remains secondary.
+
+The observed OOS results remain descriptive and are not used to select the candidate.
+
+## Phase 5G prospective harness
+
+The XRP candidate is now frozen as:
+
+`XRPUSDT Mean Reversion WATCH BUY with volume_ratio_1h <= 0.75`
+
+Freeze cutoff:
+
+`2026-11-10T22:10:15.195720+00:00`
+
+Only signals strictly after that timestamp may count as prospective evidence.
+Pre-freeze candles may be fetched only as indicator lookback.
+
+Run from `agent/`:
+
+```bash
+SSL_CERT_FILE="$(python -m certifi)" \
+python -m app.evaluation.prospective_candidate_cli \
+  --output reports/phase5g-xrp-prospective.json
+```
+
+The report tracks baseline XRP Mean Reversion WATCH BUY signals and the frozen
+candidate subset, with `PENDING` and `MATURED` 24h outcomes.
+
+`sample_ready` is informational only and does not authorize Testnet or Phase 6.
+
 ## Next task
 
-Run the Phase 5F.2 CLI on the same 730-day dataset and review the generated JSON.
+Run the Phase 5G prospective harness now to establish the zero/early baseline, then
+rerun it only as genuinely new post-freeze signals mature.
 
 Do not start Phase 6.

@@ -57,20 +57,30 @@
 - XRPUSDT volume_ratio_1h <= 0.75 is the strongest asset-specific research lead
 - ETHUSDT 4h lower-highs/lower-lows is a weaker secondary lead
 
-### Phase 5F.2 - Mean Reversion candidate experiment 🔬
+### Phase 5F.2 - Mean Reversion candidate experiment ✅
 - predetermined XRPUSDT low-1h-volume candidate
 - ETHUSDT 4h lower-highs/lower-lows comparator
 - baseline vs candidate metrics by temporal segment
 - calibration + validation determine eligibility
+- XRP candidate passed the predefined research screen
+- ETH comparator passed mechanically but with weak validation uplift
 - observed OOS remains descriptive only
 - no production strategy changes
 - no Testnet or execution
 
-### Phase 5G - Prospective experimental variant (deferred)
-- only freeze one candidate if 5F.2 passes its predefined screen
-- require genuinely unseen future or prospective paper evidence
-- do not reuse the already observed OOS period
-- no promotion to Testnet without new evidence
+### Phase 5G - Frozen XRP prospective evidence 🔬
+- frozen candidate: XRPUSDT Mean Reversion WATCH BUY with volume_ratio_1h <= 0.75
+- freeze cutoff: 2026-11-10T22:10:15.195720+00:00
+- only post-freeze signals count as prospective observations
+- pre-freeze history may be used only for indicator lookback
+- baseline XRP cohort vs candidate subset
+- 24h fixed outcome with existing fee/slippage assumptions
+- pending vs matured observations
+- no automatic promotion rule
+- no Testnet or execution
+
+### Phase 6 - Binance Spot Testnet
+- still deferred until genuinely unseen prospective evidence supports progression
 
 ## Phase 6 - Binance Spot Testnet
 - only after new unseen evidence supports progression
