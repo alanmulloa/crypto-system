@@ -104,6 +104,7 @@ def test_runner_only_emits_points_after_all_timeframes_have_warmup():
     assert points
     for point in points:
         assert all(item.candles >= 60 for item in point.candidate.analyses)
+        assert all(item.candles <= 250 for item in point.candidate.analyses)
 
 
 def test_runner_is_deterministic():
@@ -156,3 +157,20 @@ def test_missing_timeframe_produces_no_candidate():
         timestamp_ms=history["1h"][-1].close_time_ms,
     )
     assert candidate is None
+
+
+def test_historical_window_matches_live_default_depth():
+    runner = HistoricalSanityRunner(min_candles=60, analysis_candles=250)
+    history = market_history(90)
+    candidate = runner.build_candidate(
+        symbol="BTCUSDT",
+        base_asset="BTC",
+        quote_asset="USDT",
+        candles_by_interval=history,
+        timestamp_ms=history["1h"][-1].close_time_ms,
+    )
+    assert candidate is not None
+    assert candidate.analysis_for("15m").candles == 250
+    assert candidate.analysis_for("1h").candles == 250
+    assert candidate.analysis_for("4h").candles == 250
+    assert candidate.analysis_for("1d").candles == 90

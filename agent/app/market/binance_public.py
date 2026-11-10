@@ -13,6 +13,13 @@ from app.market.types import Candle, SymbolInfo, Ticker24h
 
 BINANCE_PUBLIC_BASE_URL = "https://api.binance.com"
 
+INTERVAL_MS = {
+    "15m": 15 * 60 * 1000,
+    "1h": 60 * 60 * 1000,
+    "4h": 4 * 60 * 60 * 1000,
+    "1d": 24 * 60 * 60 * 1000,
+}
+
 
 class BinancePublicError(RuntimeError):
     pass
@@ -50,7 +57,7 @@ class BinancePublicClient:
 
         for attempt in range(self.max_retries + 1):
             try:
-                with urlopen(request, timeout=self.timeout_seconds) as response:  # noqa: S310 - operator-configured Binance base URL
+                with urlopen(request, timeout=self.timeout_seconds) as response:  # noqa: S310
                     return json.loads(response.read().decode("utf-8"))
             except HTTPError as exc:
                 retryable = exc.code in {418, 429} or 500 <= exc.code <= 599
@@ -59,14 +66,22 @@ class BinancePublicClient:
                         f"Binance public request failed for {path} with HTTP {exc.code}"
                     ) from exc
                 retry_after = exc.headers.get("Retry-After") if exc.headers else None
-                delay = float(retry_after) if retry_after and retry_after.isdigit() else self.backoff_seconds * (2**attempt)
+                delay = (
+                    float(retry_after)
+                    if retry_after and retry_after.isdigit()
+                    else self.backoff_seconds * (2**attempt)
+                )
                 self.sleep_func(delay)
             except (URLError, TimeoutError, OSError) as exc:
                 if attempt >= self.max_retries:
-                    raise BinancePublicError(f"Binance public request failed for {path}: {exc}") from exc
+                    raise BinancePublicError(
+                        f"Binance public request failed for {path}: {exc}"
+                    ) from exc
                 self.sleep_func(self.backoff_seconds * (2**attempt))
             except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-                raise BinancePublicError(f"Invalid Binance response for {path}: {exc}") from exc
+                raise BinancePublicError(
+                    f"Invalid Binance response for {path}: {exc}"
+                ) from exc
 
         raise BinancePublicError(f"Binance public request failed for {path}")
 
@@ -108,20 +123,18 @@ class BinancePublicClient:
             )
         return result
 
-    def klines(self, symbol: str, interval: str, limit: int = 250) -> list[Candle]:
-        payload = self._get(
-            "/api/v3/klines",
-            {"symbol": symbol, "interval": interval, "limit": limit},
-        )
-        now_ms = self.now_ms()
+    def _parse_klines(
+        self,
+        payload: Any,
+        *,
+        closed_before_ms: int,
+    ) -> list[Candle]:
         candles: list[Candle] = []
         for row in payload:
             if len(row) < 9:
                 continue
             close_time_ms = int(row[6])
-            # Binance may include the currently forming candle. Phase 1 only exposes
-            # fully closed candles so later strategies cannot accidentally look ahead.
-            if close_time_ms > now_ms:
+            if close_time_ms > closed_before_ms:
                 continue
             candles.append(
                 Candle(
@@ -137,3 +150,73 @@ class BinancePublicClient:
                 )
             )
         return candles
+
+    def klines(self, symbol: str, interval: str, limit: int = 250) -> list[Candle]:
+        payload = self._get(
+            "/api/v3/klines",
+            {"symbol": symbol, "interval": interval, "limit": limit},
+        )
+        return self._parse_klines(payload, closed_before_ms=self.now_ms())
+
+    def historical_klines(
+        self,
+        symbol: str,
+        interval: str,
+        *,
+        start_time_ms: int,
+        end_time_ms: int | None = None,
+        page_limit: int = 1000,
+    ) -> list[Candle]:
+        if interval not in INTERVAL_MS:
+            raise ValueError(f"unsupported historical interval {interval}")
+        if start_time_ms < 0:
+            raise ValueError("start_time_ms cannot be negative")
+        if end_time_ms is not None and end_time_ms < start_time_ms:
+            raise ValueError("end_time_ms must be >= start_time_ms")
+        if not 1 <= page_limit <= 1000:
+            raise ValueError("page_limit must be between 1 and 1000")
+
+        effective_end = min(end_time_ms or self.now_ms(), self.now_ms())
+        cursor = start_time_ms
+        step_ms = INTERVAL_MS[interval]
+        by_open_time: dict[int, Candle] = {}
+        previous_last_open: int | None = None
+
+        while cursor <= effective_end:
+            payload = self._get(
+                "/api/v3/klines",
+                {
+                    "symbol": symbol,
+                    "interval": interval,
+                    "startTime": cursor,
+                    "endTime": effective_end,
+                    "limit": page_limit,
+                },
+            )
+            page = self._parse_klines(payload, closed_before_ms=effective_end)
+            if not page:
+                break
+
+            page.sort(key=lambda candle: candle.open_time_ms)
+            for candle in page:
+                if candle.open_time_ms >= start_time_ms:
+                    by_open_time[candle.open_time_ms] = candle
+
+            last_open = page[-1].open_time_ms
+            if previous_last_open is not None and last_open <= previous_last_open:
+                break
+            previous_last_open = last_open
+
+            next_cursor = last_open + step_ms
+            if next_cursor <= cursor:
+                break
+            cursor = next_cursor
+
+            if len(payload) < page_limit:
+                break
+
+        return [
+            by_open_time[key]
+            for key in sorted(by_open_time)
+            if by_open_time[key].close_time_ms <= effective_end
+        ]

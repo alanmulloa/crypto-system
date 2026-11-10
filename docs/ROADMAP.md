@@ -6,40 +6,32 @@
 ## Phase 3 - Portfolio + Risk ✅
 ## Phase 4 - Paper Trading ✅
 
-## Phase 5 - Backtesting + Evaluation ✅
+## Phase 5 - Backtesting + Evaluation
 
 ### Phase 5A - Outcome Evaluation ✅
-- future outcome labels
-- MFE / MAE
-- WATCH/WAIT/REJECT diagnostics
-
 ### Phase 5B - Deterministic Spot Backtest ✅
-- next-candle Spot execution
-- entry ranges
-- stops / TP1 / horizon
-- fees / slippage
-- no shorts
-- expectancy / profit factor / drawdown
-
 ### Phase 5C - Temporal Validation ✅
-- chronological 60/20/20 split
-- calibration / validation / out-of-sample
-- segment candle truncation
-- regime diagnostics
-- score-threshold sensitivity
-- WATCH vs REJECT outcomes
-- stability diagnostics
-- no automatic tuning
 
-## Phase 5D - Real historical evidence run
-- download sufficiently deep public Binance history
-- run 5A/5B/5C across multiple liquid Spot assets
-- store reports
-- review sample sizes and stability
-- prospective Paper monitoring
+### Phase 5D - Real historical evidence tooling ✅
+- paginated public Binance klines
+- 15m / 1h / 4h / 1d
+- closed-candle filtering
+- deduplication
+- gap diagnostics
+- historical/live 250-candle parity
+- multi-asset evidence runner
+- JSON evidence artifact
+- no credentials or execution
+
+### Phase 5E - Evidence review
+- execute 5D on real public history
+- review sample size and OOS stability
+- compare strategies across assets/regimes
+- decide whether strategies require revision
+- prospective Paper observation
 
 ## Phase 6 - Binance Spot Testnet
-- only after Phase 5D evidence
+- only after evidence review
 - signed API
 - exchange filters
 - reconciliation

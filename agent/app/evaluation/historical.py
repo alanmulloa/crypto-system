@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bisect import bisect_right
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
@@ -20,11 +21,11 @@ class HistoricalPoint:
 
 
 class HistoricalSanityRunner:
-    """Walk-forward evaluator for strategy sanity checks.
+    """Walk-forward evaluator aligned with the live scanner candle window.
 
-    At every historical point, only candles whose close timestamp is <= the point
-    timestamp are visible. This class is deliberately not a backtest broker and
-    does not simulate fills, PnL, or position sizing.
+    At every point only already-closed candles are visible. The default 250-candle
+    analysis window matches the live scanner's default kline depth, avoiding a
+    historical-vs-live indicator mismatch while keeping evaluation scalable.
     """
 
     def __init__(
@@ -33,12 +34,16 @@ class HistoricalSanityRunner:
         aggregator: StrategyAggregator | None = None,
         *,
         min_candles: int = 60,
+        analysis_candles: int = 250,
     ):
         if min_candles < 50:
             raise ValueError("min_candles must be at least 50 for current indicators")
+        if analysis_candles < min_candles:
+            raise ValueError("analysis_candles must be >= min_candles")
         self.strategy_engine = strategy_engine or StrategyEngine()
         self.aggregator = aggregator or StrategyAggregator()
         self.min_candles = min_candles
+        self.analysis_candles = analysis_candles
 
     def build_candidate(
         self,
@@ -55,9 +60,12 @@ class HistoricalSanityRunner:
             source = candles_by_interval.get(interval)
             if not source:
                 return None
-            visible = [candle for candle in source if candle.close_time_ms <= timestamp_ms]
-            if len(visible) < self.min_candles:
+            close_times = [candle.close_time_ms for candle in source]
+            visible_end = bisect_right(close_times, timestamp_ms)
+            if visible_end < self.min_candles:
                 return None
+            visible_start = max(0, visible_end - self.analysis_candles)
+            visible = list(source[visible_start:visible_end])
 
             indicators = snapshot(visible)
             analyses.append(

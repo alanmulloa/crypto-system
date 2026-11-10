@@ -1,54 +1,43 @@
-# HANDOFF - Crypto System after Phase 5C
+# HANDOFF - Crypto System after Phase 5D tooling
 
 ## Current state
 
 Phases 1-4 are complete.
 
-Phase 5 now contains:
+Phase 5 includes:
 
-- 5A future-outcome labels;
-- 5B deterministic Spot backtest;
-- 5C chronological calibration/validation/out-of-sample validation.
+- 5A outcome labels;
+- 5B Spot-only backtest;
+- 5C chronological validation;
+- 5D real Binance public-history evidence runner.
 
-## Validation boundary
+## New CLI
 
-Default split:
+From `agent/`:
 
-- calibration 60%;
-- validation 20%;
-- out-of-sample 20%.
+`python -m app.evaluation.evidence_cli`
 
-No shuffling.
+Default:
 
-Candles are truncated at each segment end so future segments cannot leak into earlier evaluation.
+- BTCUSDT / ETHUSDT / BNBUSDT / SOLUSDT / XRPUSDT;
+- 730 days;
+- 8000 hourly evaluation points per symbol;
+- output under `reports/`.
 
-## Diagnostics
+## Important parity fix
 
-Per strategy:
+Historical indicators now default to the same 250-candle depth as the live scanner instead of consuming the entire prior history.
 
-- backtest metrics in each segment;
-- expectancy-sign consistency;
-- OOS/calibration expectancy ratio;
-- drawdown degradation;
-- performance by market regime;
-- score-threshold sensitivity;
-- WATCH vs REJECT future outcomes.
+This keeps research closer to production behavior and improves runtime.
 
-## No autonomous tuning
+## No credentials
 
-The validation layer does not change:
+5D uses only public Binance klines.
 
-- strategy thresholds;
-- strategy weights;
-- hard risk limits;
-- kill switch.
+There is still no private exchange client or Testnet execution.
 
-It only reports evidence.
+## Next task
 
-## Important next step
+Run the evidence CLI against real public history, inspect the generated JSON and produce a Phase 5E evidence review.
 
-Do not go directly to Testnet.
-
-The framework is ready, but we still need **Phase 5D: a real evidence run over sufficiently deep public Binance history across multiple liquid Spot assets**.
-
-That run should establish actual sample sizes, regime coverage and out-of-sample stability before any signed exchange API is introduced.
+Do not start Phase 6 merely because the tooling is complete.
