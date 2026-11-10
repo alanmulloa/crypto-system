@@ -14,6 +14,17 @@ from app.evaluation.outcomes import (
     OutcomeObservation,
     OutcomeWindow,
 )
+from app.evaluation.validation import (
+    RegimePerformance,
+    ScoreThresholdSensitivity,
+    SegmentValidation,
+    StrategyValidationReport,
+    TemporalSplitConfig,
+    TemporalValidator,
+    ValidationSegment,
+    regime_performance,
+    score_threshold_sensitivity,
+)
 
 __all__ = [
     "BacktestConfig",
@@ -29,7 +40,16 @@ __all__ = [
     "OutcomeObservation",
     "OutcomeSummary",
     "OutcomeWindow",
+    "RegimePerformance",
+    "ScoreThresholdSensitivity",
+    "SegmentValidation",
     "StrategyStateCounts",
+    "StrategyValidationReport",
+    "TemporalSplitConfig",
+    "TemporalValidator",
+    "ValidationSegment",
+    "regime_performance",
+    "score_threshold_sensitivity",
     "summarize",
     "summarize_outcomes",
 ]

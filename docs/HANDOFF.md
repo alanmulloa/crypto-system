@@ -1,47 +1,54 @@
-# HANDOFF - Crypto System after Phase 5B
+# HANDOFF - Crypto System after Phase 5C
 
 ## Current state
 
-Phases 1-4 are complete. Phase 5A labels future outcomes. Phase 5B adds a deterministic Spot-only backtest simulator for each independent strategy.
+Phases 1-4 are complete.
 
-## Backtest execution rules
+Phase 5 now contains:
 
-- WATCH only;
-- next 1h candle after signal;
-- optional entry range validation;
-- fixed USD notional;
-- Paper Broker fee/slippage assumptions;
-- stop / TP1 / horizon;
-- stop wins same-candle ambiguity;
-- no overlapping trade for the same strategy;
-- SELL hypotheses skipped by default (no shorts).
+- 5A future-outcome labels;
+- 5B deterministic Spot backtest;
+- 5C chronological calibration/validation/out-of-sample validation.
 
-## Metrics
+## Validation boundary
 
-Each strategy report contains:
+Default split:
 
-- trade count;
-- gross profit/loss;
-- net PnL;
-- expectancy;
-- profit factor;
-- win rate;
-- closed-equity max drawdown;
-- skipped-signal diagnostics.
+- calibration 60%;
+- validation 20%;
+- out-of-sample 20%.
 
-## Important interpretation
+No shuffling.
 
-These results are not yet evidence for Testnet.
+Candles are truncated at each segment end so future segments cannot leak into earlier evaluation.
 
-The same data can still bias threshold choices.
+## Diagnostics
 
-## Next task - Phase 5C
+Per strategy:
 
-Split history into calibration / validation / out-of-sample periods and compare performance stability across:
+- backtest metrics in each segment;
+- expectancy-sign consistency;
+- OOS/calibration expectancy ratio;
+- drawdown degradation;
+- performance by market regime;
+- score-threshold sensitivity;
+- WATCH vs REJECT future outcomes.
 
-- strategies;
-- market regimes;
-- horizons/timeframes;
-- accepted vs rejected opportunities.
+## No autonomous tuning
 
-Only after that should the project discuss Binance Spot Testnet credentials.
+The validation layer does not change:
+
+- strategy thresholds;
+- strategy weights;
+- hard risk limits;
+- kill switch.
+
+It only reports evidence.
+
+## Important next step
+
+Do not go directly to Testnet.
+
+The framework is ready, but we still need **Phase 5D: a real evidence run over sufficiently deep public Binance history across multiple liquid Spot assets**.
+
+That run should establish actual sample sizes, regime coverage and out-of-sample stability before any signed exchange API is introduced.
