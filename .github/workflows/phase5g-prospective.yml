@@ -53,6 +53,12 @@ jobs:
             --input reports/phase5g/latest.json \
             --output reports/phase5g/review.json
 
+      - name: Generate Phase 5G.3 decision
+        run: |
+          python -m app.evaluation.prospective_decision \
+            --input reports/phase5g/latest.json \
+            --output reports/phase5g/decision.json
+
       - name: Commit immutable evidence snapshot
         run: |
           if git diff --quiet -- reports/phase5g; then
@@ -61,6 +67,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add reports/phase5g/latest.json reports/phase5g/review.json reports/phase5g/history/
+          git add reports/phase5g/latest.json reports/phase5g/review.json reports/phase5g/decision.json reports/phase5g/history/
           git commit -m "Collect Phase 5G prospective evidence"
           git push origin HEAD:main

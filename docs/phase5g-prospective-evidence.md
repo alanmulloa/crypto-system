@@ -102,3 +102,40 @@ The only automated decisions are:
 
 There is deliberately no automatic `PASS`. Even when `sample_ready=true`,
 `phase6_blocked` remains true until a separate formal decision is made.
+
+
+# Phase 5G.3 — Prospective Decision Protocol
+
+Phase 5G.3 pre-registers the final prospective research decision before the
+candidate has accumulated the minimum sample. This prevents criteria from being
+changed after observing the results.
+
+The protocol reads `reports/phase5g/latest.json` and writes
+`reports/phase5g/decision.json`.
+
+## Frozen decision criteria
+
+A research pass requires all of the following:
+
+- at least 20 matured candidate observations;
+- candidate average net return > 0;
+- candidate median net return > 0;
+- candidate positive return rate > 50%;
+- uplift versus baseline > 0;
+- historical integrity validation succeeds;
+- the frozen experiment validation succeeds.
+
+Decision states:
+
+- `NOT_READY`: fewer than 20 matured candidate observations;
+- `INCONCLUSIVE`: minimum sample reached but at least one required metric is
+  unavailable;
+- `PASS_RESEARCH`: minimum sample reached and every pre-registered metric
+  passes;
+- `FAIL_RESEARCH`: minimum sample reached and at least one available criterion
+  fails.
+
+`PASS_RESEARCH` is not an execution approval. `phase6_eligible` and
+`phase6_blocked` remain false/true respectively until a separate human review
+explicitly authorizes the next phase. No strategy, fee, slippage, order, Testnet,
+private API, Futures, Margin, leverage, or withdrawal behavior is changed here.
