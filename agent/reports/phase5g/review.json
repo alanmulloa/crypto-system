@@ -1,53 +1,53 @@
 {
-  "phase": "5G.2-monitoring-review",
-  "source_created_at": "2026-11-11T06:27:57.968331+00:00",
-  "as_of_ms": 1794378457320,
-  "decision": "WAIT",
-  "state": "WAITING_FOR_CANDIDATE_SIGNAL",
-  "reason": "No qualifying frozen-candidate observation has been recorded yet.",
-  "phase6_blocked": true,
-  "sample_ready": false,
-  "progress": {
-    "matured_candidate_observations": 0,
-    "required_matured_candidate_observations": 20,
-    "percent": 0,
-    "remaining": 20
-  },
-  "milestones": {
-    "first_baseline_observation": false,
-    "first_candidate_observation": false,
-    "first_candidate_matured": false,
-    "sample_ready": false
-  },
+  "as_of_ms": 1794409313501,
   "baseline": {
+    "average_net_return_pct": null,
+    "matured": 0,
+    "median_net_return_pct": null,
     "observations": 0,
     "pending": 0,
-    "matured": 0,
-    "average_net_return_pct": null,
-    "median_net_return_pct": null,
     "positive_return_rate_pct": null
   },
   "candidate": {
+    "average_net_return_pct": null,
+    "matured": 0,
+    "median_net_return_pct": null,
     "observations": 0,
     "pending": 0,
-    "matured": 0,
-    "average_net_return_pct": null,
-    "median_net_return_pct": null,
     "positive_return_rate_pct": null
   },
-  "uplift_vs_baseline_pct_points": null,
+  "decision": "WAIT",
   "frozen_experiment": {
-    "symbol": "XRPUSDT",
     "feature": "volume_ratio_1h",
-    "operator": "<=",
-    "value": 0.75,
     "frozen_at_ms": 1794348615195,
-    "outcome_hours": 24
+    "operator": "<=",
+    "outcome_hours": 24,
+    "symbol": "XRPUSDT",
+    "value": 0.75
   },
   "guardrails": {
     "automatic_promotion": false,
-    "strategy_changes_allowed": false,
     "execution_enabled": false,
-    "private_binance_api": false
-  }
+    "private_binance_api": false,
+    "strategy_changes_allowed": false
+  },
+  "milestones": {
+    "first_baseline_observation": false,
+    "first_candidate_matured": false,
+    "first_candidate_observation": false,
+    "sample_ready": false
+  },
+  "phase": "5G.2-monitoring-review",
+  "phase6_blocked": true,
+  "progress": {
+    "matured_candidate_observations": 0,
+    "percent": 0.0,
+    "remaining": 20,
+    "required_matured_candidate_observations": 20
+  },
+  "reason": "No qualifying frozen-candidate observation has been recorded yet.",
+  "sample_ready": false,
+  "source_created_at": "2026-11-11T15:02:12.866185+00:00",
+  "state": "WAITING_FOR_CANDIDATE_SIGNAL",
+  "uplift_vs_baseline_pct_points": null
 }
