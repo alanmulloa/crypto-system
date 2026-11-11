@@ -70,3 +70,35 @@ to avoid overlapping writers.
 This phase is research-only. It uses public Binance market data and does not
 add API keys, private Binance endpoints, Testnet execution, Futures, Margin,
 leverage, withdrawals, or order placement.
+
+
+# Phase 5G.2 — Monitoring & Review
+
+Phase 5G.2 converts the latest prospective evidence into a deterministic review
+summary. It does not alter the frozen candidate and it cannot authorize Phase 6.
+
+Each collection run also executes:
+
+```bash
+python -m app.evaluation.prospective_review \
+  --input reports/phase5g/latest.json \
+  --output reports/phase5g/review.json
+```
+
+The review exposes:
+
+- baseline and candidate observation/pending/matured counts;
+- progress toward 20 matured candidate observations;
+- current return, median, positive-rate, and uplift metrics when available;
+- milestones for first baseline signal, first candidate signal, first matured
+  candidate observation, and sample readiness;
+- a monitoring state and a decision gate.
+
+The only automated decisions are:
+
+- `WAIT`: prospective evidence is still incomplete;
+- `REVIEW`: the minimum matured sample has been reached and a human review is
+  required.
+
+There is deliberately no automatic `PASS`. Even when `sample_ready=true`,
+`phase6_blocked` remains true until a separate formal decision is made.
