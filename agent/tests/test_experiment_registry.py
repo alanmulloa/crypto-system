@@ -137,3 +137,159 @@ def test_cli_list_and_show(tmp_path, capsys):
     show_payload = json.loads(capsys.readouterr().out)
     assert show_payload["id"] == "test-experiment"
     assert show_payload["status"] == "DRAFT"
+
+
+def test_add_experiment_rejects_duplicate_id():
+    registry = ExperimentRegistry((experiment(),))
+    with pytest.raises(ValueError, match="already exists"):
+        registry.add_experiment(experiment())
+
+
+def test_cli_register_creates_draft(tmp_path, capsys):
+    path = tmp_path / "registry.json"
+    ExperimentRegistry(tuple()).save(path)
+
+    assert registry_cli_main(
+        [
+            "--registry",
+            str(path),
+            "register",
+            "--id",
+            "btc-low-volume",
+            "--symbol",
+            "btcusdt",
+            "--strategy",
+            "mean_reversion",
+            "--direction",
+            "buy",
+            "--feature",
+            "volume_ratio_1h",
+            "--operator",
+            "<=",
+            "--threshold",
+            "0.8",
+            "--outcome-hours",
+            "24",
+            "--fee-bps",
+            "10",
+            "--slippage-bps",
+            "5",
+            "--artifact-path",
+            "reports/research/btc-low-volume/",
+        ]
+    ) == 0
+    assert "REGISTERED | btc-low-volume | DRAFT" in capsys.readouterr().out
+
+    item = ExperimentRegistry.load(path).get("btc-low-volume")
+    assert item.status is ExperimentStatus.DRAFT
+    assert item.symbol == "BTCUSDT"
+    assert item.direction == "BUY"
+    assert item.freeze_at_ms is None
+    assert item.decision is None
+
+
+def test_cli_register_rejects_duplicate_id(tmp_path):
+    path = tmp_path / "registry.json"
+    ExperimentRegistry((experiment(id="dup"),)).save(path)
+
+    args = [
+        "--registry",
+        str(path),
+        "register",
+        "--id",
+        "dup",
+        "--symbol",
+        "BTCUSDT",
+        "--strategy",
+        "mean_reversion",
+        "--direction",
+        "BUY",
+        "--feature",
+        "volume_ratio_1h",
+        "--operator",
+        "<=",
+        "--threshold",
+        "0.8",
+        "--outcome-hours",
+        "24",
+        "--fee-bps",
+        "10",
+        "--slippage-bps",
+        "5",
+        "--artifact-path",
+        "reports/research/dup/",
+    ]
+    with pytest.raises(SystemExit, match="already exists"):
+        registry_cli_main(args)
+
+
+def test_cli_transition_draft_to_calibration(tmp_path, capsys):
+    path = tmp_path / "registry.json"
+    ExperimentRegistry((experiment(id="btc"),)).save(path)
+
+    assert registry_cli_main(
+        ["--registry", str(path), "transition", "btc", "CALIBRATION"]
+    ) == 0
+    assert "DRAFT -> CALIBRATION" in capsys.readouterr().out
+    assert ExperimentRegistry.load(path).get("btc").status is ExperimentStatus.CALIBRATION
+
+
+def test_cli_transition_to_frozen_requires_timestamp(tmp_path):
+    path = tmp_path / "registry.json"
+    item = experiment(id="btc", status=ExperimentStatus.VALIDATION)
+    ExperimentRegistry((item,)).save(path)
+
+    with pytest.raises(SystemExit, match="freeze-at-ms is required"):
+        registry_cli_main(
+            ["--registry", str(path), "transition", "btc", "FROZEN"]
+        )
+
+
+def test_cli_transition_to_frozen_sets_timestamp(tmp_path):
+    path = tmp_path / "registry.json"
+    item = experiment(id="btc", status=ExperimentStatus.VALIDATION)
+    ExperimentRegistry((item,)).save(path)
+
+    assert registry_cli_main(
+        [
+            "--registry",
+            str(path),
+            "transition",
+            "btc",
+            "FROZEN",
+            "--freeze-at-ms",
+            "123456",
+        ]
+    ) == 0
+    frozen = ExperimentRegistry.load(path).get("btc")
+    assert frozen.status is ExperimentStatus.FROZEN
+    assert frozen.freeze_at_ms == 123456
+
+
+def test_cli_transition_rejects_invalid_jump(tmp_path):
+    path = tmp_path / "registry.json"
+    ExperimentRegistry((experiment(id="btc"),)).save(path)
+
+    with pytest.raises(SystemExit, match="invalid experiment status transition"):
+        registry_cli_main(
+            ["--registry", str(path), "transition", "btc", "VALIDATION"]
+        )
+
+
+def test_cli_transition_cannot_mutate_xrp_prospective(tmp_path):
+    source = ExperimentRegistry.load(
+        __import__("pathlib").Path("research/experiment-registry.json")
+    )
+    path = tmp_path / "registry.json"
+    source.save(path)
+
+    with pytest.raises(SystemExit, match="invalid experiment status transition"):
+        registry_cli_main(
+            [
+                "--registry",
+                str(path),
+                "transition",
+                "phase5g-xrp-low-volume-1h",
+                "CALIBRATION",
+            ]
+        )

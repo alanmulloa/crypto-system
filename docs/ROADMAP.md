@@ -112,6 +112,13 @@
 - research_only=true and phase6_blocked=true guardrails
 - no network, execution, Testnet, or candidate discovery
 
+#### Phase 5H.3 - Candidate Registration + Transition Flow ✅
+- explicit DRAFT-only registration
+- duplicate-id and definition validation
+- lifecycle transitions through the existing state graph
+- explicit freeze timestamp required for FROZEN
+- existing XRP 5G cannot be rewound or mutated
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
