@@ -112,3 +112,55 @@ invented.
 
 Phase 6 remains blocked. The registry does not add Testnet execution, live
 execution, Futures, Margin, leverage, withdrawals, API keys, or any order path.
+
+
+## Phase 5H.3 — Registration and transition flow
+
+New research candidates are registered explicitly as `DRAFT`; the CLI cannot
+create an experiment directly as `FROZEN` or `PROSPECTIVE`.
+
+Example:
+
+```bash
+python -m app.evaluation.experiment_registry_cli register \
+  --id btc-mean-reversion-low-volume \
+  --symbol BTCUSDT \
+  --strategy mean_reversion \
+  --direction BUY \
+  --feature volume_ratio_1h \
+  --operator '<=' \
+  --threshold 0.80 \
+  --outcome-hours 24 \
+  --fee-bps 10 \
+  --slippage-bps 5 \
+  --artifact-path reports/research/btc-mean-reversion-low-volume/
+```
+
+The resulting experiment always starts with:
+
+```text
+status = DRAFT
+decision = null
+freeze_at_ms = null
+```
+
+Lifecycle changes are explicit:
+
+```bash
+python -m app.evaluation.experiment_registry_cli transition \
+  btc-mean-reversion-low-volume CALIBRATION
+```
+
+Freezing requires a timestamp:
+
+```bash
+python -m app.evaluation.experiment_registry_cli transition \
+  btc-mean-reversion-low-volume FROZEN \
+  --freeze-at-ms <UTC_EPOCH_MS>
+```
+
+The command uses the same allowed-transition graph and frozen-definition
+protections as the registry model. Duplicate experiment ids are rejected.
+
+The existing XRP Phase 5G experiment is already `PROSPECTIVE`; this flow cannot
+rewind it to a research state or alter its frozen definition.

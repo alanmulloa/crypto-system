@@ -247,6 +247,14 @@ class ExperimentRegistry:
                 return experiment
         raise KeyError(experiment_id)
 
+    def add_experiment(
+        self,
+        experiment: ResearchExperiment,
+    ) -> "ExperimentRegistry":
+        if experiment.id in {item.id for item in self.experiments}:
+            raise ValueError(f"experiment id already exists: {experiment.id}")
+        return ExperimentRegistry((*self.experiments, experiment))
+
     def replace_experiment(
         self,
         experiment: ResearchExperiment,
