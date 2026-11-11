@@ -105,6 +105,13 @@
 - immutable definition from FROZEN onward
 - existing XRP 5G represented as metadata only
 
+#### Phase 5H.2 - Candidate Research Workspace ✅
+- isolated local workspace for DRAFT / CALIBRATION / VALIDATION experiments
+- deterministic definition snapshot and registry-drift validation
+- XRP 5G PROSPECTIVE experiment explicitly excluded
+- research_only=true and phase6_blocked=true guardrails
+- no network, execution, Testnet, or candidate discovery
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
