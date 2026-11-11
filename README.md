@@ -4,7 +4,25 @@ Evolución incremental del Crypto Tracker v4.7.1 hacia un agente de trading aut�
 
 ## Estado actual
 
-**Phase 1 - Market Intelligence implementada.** El tracker original se conserva en `tracker/`. El nuevo agente puede consultar exclusivamente datos públicos de Binance Spot, filtrar universo líquido, descargar velas 15m/1h/4h/1d, calcular indicadores simples y clasificar régimen de mercado. No genera señales de compra/venta y no puede operar.
+El proyecto ya completó las capas de Market Intelligence, estrategias, riesgo,
+paper trading y el framework de evaluación de Phase 5. La línea activa es
+investigación prospectiva: Phase 5G mantiene congelada una candidata XRP y
+recolecta evidencia no vista automáticamente; Phase 5H agrega infraestructura
+auditable para registrar futuros experimentos sin mezclarlos con 5G.
+
+| Fase | Estado |
+| --- | --- |
+| Phase 1–4 | COMPLETE |
+| Phase 5 Research | COMPLETE / ACTIVE RESEARCH FRAMEWORK |
+| Phase 5G.1 — automated collection | COMPLETE |
+| Phase 5G.2 — monitoring/review | COMPLETE |
+| Phase 5G.3 — decision protocol | COMPLETE |
+| Phase 5G.4 — prospective evidence | COLLECTING PROSPECTIVE EVIDENCE |
+| Phase 5H — research registry | ACTIVE INFRASTRUCTURE |
+| Phase 6 | BLOCKED |
+
+`sample_ready=true` no es aprobación. Tampoco `PASS_RESEARCH` autoriza
+Testnet, órdenes o ejecución: Phase 6 exige una decisión humana separada.
 
 Seguridad por defecto:
 
@@ -13,15 +31,15 @@ Seguridad por defecto:
 - `KILL_SWITCH=true`
 - no Futures, Margin ni apalancamiento
 - no withdrawals
-- ninguna API key necesaria para Phase 1
+- la investigación actual no requiere API keys privadas de Binance
 - la fuente de mercado pública (`BINANCE_MARKET_BASE_URL`) está separada del entorno de ejecución futuro
 
 ## Arquitectura
 
 - GitHub: código, ramas, PRs y CI.
 - Tracker actual: dashboard, cartera, reconstrucción histórica, operaciones manuales y conciliación on-chain.
-- Trading Agent (Python/FastAPI): Market Intelligence y futuras fases.
-- Supabase: almacenamiento compartido progresivo. En Phase 1 es opcional.
+- Trading Agent (Python/FastAPI): market intelligence, estrategias, riesgo, paper trading y evaluación research-only.
+- Supabase: almacenamiento compartido opcional; Phase 5G/5H no dependen de Supabase.
 - Binance Spot public REST: `exchangeInfo`, `ticker/24hr`, `klines`.
 
 Documentación oficial usada para los contratos de Binance:
@@ -94,4 +112,7 @@ Los módulos puros de Market Intelligence también son compatibles con `unittest
 
 ## Próximo paso
 
-Phase 2 agregará estrategias normalizadas (trend, pullback, breakout, mean reversion, momentum) sobre estos datos. Ninguna estrategia ejecutará órdenes directamente.
+Phase 5G.4 continúa acumulando evidencia prospectiva con la definición congelada
+de XRP. Phase 5H permite registrar futuras candidatas de investigación de forma
+aislada y auditable. Phase 6 permanece bloqueada hasta una revisión humana
+separada; no existe promoción automática desde resultados de investigación.

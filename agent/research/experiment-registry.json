@@ -1,0 +1,23 @@
+{
+  "experiments": [
+    {
+      "artifact_path": "reports/phase5g/",
+      "calibration_period": null,
+      "decision": "NOT_READY",
+      "direction": "BUY",
+      "feature": "volume_ratio_1h",
+      "fee_bps": 10.0,
+      "freeze_at_ms": 1794348615195,
+      "id": "phase5g-xrp-low-volume-1h",
+      "operator": "<=",
+      "outcome_hours": 24,
+      "slippage_bps": 5.0,
+      "status": "PROSPECTIVE",
+      "strategy": "mean_reversion",
+      "symbol": "XRPUSDT",
+      "threshold": 0.75,
+      "validation_period": null
+    }
+  ],
+  "schema_version": 1
+}
