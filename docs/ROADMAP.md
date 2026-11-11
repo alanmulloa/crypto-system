@@ -75,19 +75,40 @@
 - pre-freeze history may be used only for indicator lookback
 - baseline XRP cohort vs candidate subset
 - 24h fixed outcome with existing fee/slippage assumptions
-- pending vs matured observations
-- no automatic promotion rule
 - no Testnet or execution
 
-### Phase 6 - Binance Spot Testnet
-- still deferred until genuinely unseen prospective evidence supports progression
+#### Phase 5G.1 - Automated evidence collection ✅
+- scheduled public-Binance collection
+- immutable history and continuity/integrity gate
 
-## Phase 6 - Binance Spot Testnet
-- only after new unseen evidence supports progression
-- signed API
-- exchange filters
-- reconciliation
-- manual approval mode
+#### Phase 5G.2 - Monitoring & review ✅
+- WAIT / REVIEW monitoring state
+- progress and milestone reporting
+
+#### Phase 5G.3 - Prospective decision protocol ✅
+- pre-registered NOT_READY / INCONCLUSIVE / PASS_RESEARCH / FAIL_RESEARCH
+- PASS_RESEARCH is not execution approval
+
+#### Phase 5G.4 - Accumulate prospective evidence 🔬
+- currently collecting genuinely unseen evidence
+- sample_ready does not authorize progression
+- no automatic promotion rule
+
+### Phase 5H - Research experiment infrastructure
+
+#### Phase 5H.0 - Current status / roadmap reconciliation ✅
+- README and roadmap reconciled with the implemented system
+
+#### Phase 5H.1 - Research Experiment Registry ✅
+- deterministic JSON registry
+- explicit experiment lifecycle
+- immutable definition from FROZEN onward
+- existing XRP 5G represented as metadata only
+
+## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
+- requires genuinely unseen prospective evidence and a separate human decision
+- sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
+- no signed/private API execution is enabled by Phase 5G or Phase 5H
 
 ## Phase 7 - External Signals
 ## Phase 8 - Dashboard Integration
