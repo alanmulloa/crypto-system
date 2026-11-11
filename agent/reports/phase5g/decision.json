@@ -1,0 +1,48 @@
+{
+  "as_of_ms": 1794410641350,
+  "criteria": {
+    "average_net_return_positive": null,
+    "frozen_experiment_valid": true,
+    "historical_integrity_valid": true,
+    "median_net_return_positive": null,
+    "minimum_matured_observations": false,
+    "positive_return_rate_above_50": null,
+    "uplift_vs_baseline_positive": null
+  },
+  "decision": "NOT_READY",
+  "frozen_experiment": {
+    "feature": "volume_ratio_1h",
+    "frozen_at_ms": 1794348615195,
+    "operator": "<=",
+    "outcome_hours": 24,
+    "symbol": "XRPUSDT",
+    "value": 0.75
+  },
+  "guardrails": {
+    "automatic_phase6_promotion": false,
+    "execution_enabled": false,
+    "private_binance_api": false,
+    "strategy_changes_allowed": false
+  },
+  "observed": {
+    "baseline_average_net_return_pct": null,
+    "candidate_average_net_return_pct": null,
+    "candidate_matured": 0,
+    "candidate_median_net_return_pct": null,
+    "candidate_positive_return_rate_pct": null,
+    "uplift_vs_baseline_pct_points": null
+  },
+  "phase": "5G.3-prospective-decision-protocol",
+  "phase6_blocked": true,
+  "phase6_eligible": false,
+  "reason": "Prospective sample is incomplete: 0 of 20 matured candidate observations.",
+  "research_gate_passed": false,
+  "source_created_at": "2026-11-11T15:24:28.785583+00:00",
+  "thresholds": {
+    "average_net_return_pct": "> 0",
+    "median_net_return_pct": "> 0",
+    "min_matured_candidate_observations": 20,
+    "positive_return_rate_pct": "> 50",
+    "uplift_vs_baseline_pct_points": "> 0"
+  }
+}
