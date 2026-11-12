@@ -1,12 +1,12 @@
 {
-  "as_of_ms": 1794467705426,
+  "as_of_ms": 1794513405514,
   "baseline": {
     "average_net_return_pct": null,
     "cohort": "baseline",
     "matured": 0,
     "median_net_return_pct": null,
-    "observations": 0,
-    "pending": 0,
+    "observations": 2,
+    "pending": 2,
     "positive_return_rate_pct": null
   },
   "candidate": {
@@ -28,7 +28,7 @@
   },
   "frozen_at_ms": 1794348615195,
   "metadata": {
-    "created_at": "2026-11-12T07:15:25.826980+00:00",
+    "created_at": "2026-11-12T19:57:06.205880+00:00",
     "lookback_days_for_indicators": 90,
     "phase": "5G-prospective",
     "public_binance_only": true,
@@ -42,7 +42,34 @@
     "This module cannot place orders and does not use private Binance APIs."
   ],
   "min_matured_observations": 20,
-  "observations": [],
+  "observations": [
+    {
+      "cohort": "baseline",
+      "entry_market_price": 1.0335,
+      "entry_timestamp_ms": 1794492000000,
+      "feature_value": 3.5401998033708386,
+      "gross_return_pct": null,
+      "net_return_pct": null,
+      "outcome_timestamp_ms": 1794578400000,
+      "positive_return": null,
+      "signal_timestamp_ms": 1794491999999,
+      "status": "PENDING",
+      "symbol": "XRPUSDT"
+    },
+    {
+      "cohort": "baseline",
+      "entry_market_price": 1.0265,
+      "entry_timestamp_ms": 1794495600000,
+      "feature_value": 1.9527940517862996,
+      "gross_return_pct": null,
+      "net_return_pct": null,
+      "outcome_timestamp_ms": 1794582000000,
+      "positive_return": null,
+      "signal_timestamp_ms": 1794495599999,
+      "status": "PENDING",
+      "symbol": "XRPUSDT"
+    }
+  ],
   "outcome_hours": 24,
   "sample_ready": false,
   "uplift_vs_baseline_pct_points": null
