@@ -51,6 +51,9 @@ def test_generic_collection_persists_immutable_snapshot(tmp_path):
                     "phase": "5H.10",
                     "research_only": True,
                     "phase6_blocked": True,
+                    "execution_enabled": False,
+                    "testnet_enabled": False,
+                    "automatic_promotion": False,
                 },
                 "protocol": protocol_to_dict(protocol),
             }
