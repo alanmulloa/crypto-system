@@ -1,5 +1,3 @@
-import json
-
 import pytest
 
 from app.evaluation.experiment_registry import (
