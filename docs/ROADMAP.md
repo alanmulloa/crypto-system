@@ -144,6 +144,16 @@
 - validation and OOS are not read
 - no automatic lifecycle transition
 
+#### Phase 5H.7 - Validation Harness ✅
+- requires an explicitly registered VALIDATION experiment
+- consumes validation bucket summaries only
+- minimum 20 observations
+- positive average + median return
+- positive rate > 50%
+- validation uplift >= 0.10 pp
+- calibration and OOS are not read
+- PASS_VALIDATION only enables a separate human freeze review
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
