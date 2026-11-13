@@ -170,6 +170,15 @@
 - no registry writes or automatic freeze
 - Phase 6 remains blocked
 
+#### Phase 5H.10 - Generic Prospective Bootstrap ✅
+- generic protocol derived only from FROZEN registry experiments
+- freeze manifest fingerprint verification
+- registry-defined outcome horizon, fees and slippage
+- strictly post-freeze observations
+- immutable history/continuity gate
+- adapter layer only; existing XRP 5G remains untouched
+- no Testnet, execution or automatic promotion
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
