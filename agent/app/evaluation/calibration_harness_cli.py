@@ -11,7 +11,10 @@ from app.evaluation.calibration_harness import (
     MIN_CALIBRATION_OBSERVATIONS,
     run_calibration_review,
 )
-from app.evaluation.experiment_registry import ExperimentRegistry
+from app.evaluation.experiment_registry import (
+    ExperimentRegistry,
+    experiment_definition_snapshot,
+)
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -66,6 +69,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "phase6_blocked": True,
             "min_calibration_observations": MIN_CALIBRATION_OBSERVATIONS,
         },
+        "experiment_definition": experiment_definition_snapshot(experiment),
         "review": asdict(review),
     }
 
