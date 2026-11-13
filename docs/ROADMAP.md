@@ -119,6 +119,14 @@
 - explicit freeze timestamp required for FROZEN
 - existing XRP 5G cannot be rewound or mutated
 
+#### Phase 5H.4 - Candidate Discovery ✅
+- consumes existing Phase 5F.1 artifacts
+- uses calibration + validation only
+- only pre-defined buckets with exact rule mappings are eligible
+- requires sufficient sample + positive return + positive uplift in both segments
+- deterministic research proposals; no automatic registry writes or freezing
+- OOS remains descriptive and is excluded from selection
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
