@@ -1,5 +1,5 @@
 {
-  "as_of_ms": 1794552578824,
+  "as_of_ms": 1794599076917,
   "criteria": {
     "average_net_return_positive": null,
     "frozen_experiment_valid": true,
@@ -25,7 +25,7 @@
     "strategy_changes_allowed": false
   },
   "observed": {
-    "baseline_average_net_return_pct": null,
+    "baseline_average_net_return_pct": 0.03576647421709511,
     "candidate_average_net_return_pct": null,
     "candidate_matured": 0,
     "candidate_median_net_return_pct": null,
@@ -37,7 +37,7 @@
   "phase6_eligible": false,
   "reason": "Prospective sample is incomplete: 0 of 20 matured candidate observations.",
   "research_gate_passed": false,
-  "source_created_at": "2026-11-13T06:49:56.715058+00:00",
+  "source_created_at": "2026-11-13T19:45:00.340840+00:00",
   "thresholds": {
     "average_net_return_pct": "> 0",
     "median_net_return_pct": "> 0",
