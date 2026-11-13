@@ -135,6 +135,15 @@
 - read-only registry review; no automatic registration or freezing
 - Phase 6 remains blocked
 
+#### Phase 5H.6 - Calibration Harness ✅
+- requires an explicitly registered CALIBRATION experiment
+- consumes calibration bucket summaries only
+- minimum 20 observations
+- positive average + median return
+- positive rate > 50% and uplift > 0
+- validation and OOS are not read
+- no automatic lifecycle transition
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
