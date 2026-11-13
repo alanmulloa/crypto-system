@@ -162,6 +162,14 @@
 - no registry writes or automatic freeze
 - Phase 6 remains blocked
 
+#### Phase 5H.9 - Freeze Manifest ✅
+- deterministic pre-freeze definition fingerprint
+- canonical SHA-256 fingerprints for calibration/validation evidence
+- rechecks 5H.8 readiness before manifest creation
+- freeze timestamp remains pending
+- no registry writes or automatic freeze
+- Phase 6 remains blocked
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
