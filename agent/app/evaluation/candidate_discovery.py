@@ -62,6 +62,22 @@ _PREDEFINED_RULES = (
 _RULE_BY_KEY = {(rule.feature, rule.bucket): rule for rule in _PREDEFINED_RULES}
 
 
+def bucket_for_definition(
+    *,
+    feature: str,
+    operator: str,
+    threshold: float | int | str,
+) -> str | None:
+    for rule in _PREDEFINED_RULES:
+        if (
+            rule.feature == feature
+            and rule.operator == operator
+            and rule.threshold == threshold
+        ):
+            return rule.bucket
+    return None
+
+
 @dataclass(frozen=True)
 class CandidateProposal:
     id: str
