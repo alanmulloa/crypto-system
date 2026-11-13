@@ -127,6 +127,14 @@
 - deterministic research proposals; no automatic registry writes or freezing
 - OOS remains descriptive and is excluded from selection
 
+#### Phase 5H.5 - Proposal Review Gate ✅
+- exact tracked rules -> ALREADY_TRACKED
+- overlapping research families -> HUMAN_REVIEW
+- validation uplift < 0.10 pp -> REJECT_WEAK_VALIDATION
+- otherwise -> READY_TO_REGISTER
+- read-only registry review; no automatic registration or freezing
+- Phase 6 remains blocked
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
