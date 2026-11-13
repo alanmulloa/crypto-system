@@ -5,7 +5,6 @@ import pytest
 from app.evaluation.experiment_registry import ExperimentStatus, ResearchExperiment
 from app.evaluation.freeze_manifest import canonical_json_sha256, freeze_definition
 from app.evaluation.prospective_bootstrap import (
-    GenericProspectiveProtocol,
     assert_generic_history_compatible,
     build_generic_protocol,
     validate_generic_report,
