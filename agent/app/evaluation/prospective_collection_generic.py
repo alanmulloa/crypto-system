@@ -6,25 +6,14 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from app.evaluation.prospective_bootstrap import (
-    GenericProspectiveProtocol,
     assert_generic_history_compatible,
+    protocol_from_bootstrap,
     validate_generic_report,
 )
 
 
 def _load(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
-
-
-def protocol_from_bootstrap(payload: Mapping[str, Any]) -> GenericProspectiveProtocol:
-    metadata = payload.get("metadata") or {}
-    if metadata.get("phase") != "5H.10":
-        raise ValueError("bootstrap artifact must be Phase 5H.10")
-    if metadata.get("research_only") is not True:
-        raise ValueError("bootstrap must be research_only")
-    if metadata.get("phase6_blocked") is not True:
-        raise ValueError("bootstrap must keep phase6_blocked=true")
-    return GenericProspectiveProtocol(**dict(payload["protocol"]))
 
 
 def _snapshot_name(report: Mapping[str, Any]) -> str:

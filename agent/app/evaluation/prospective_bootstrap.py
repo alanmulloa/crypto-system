@@ -87,6 +87,25 @@ def protocol_to_dict(protocol: GenericProspectiveProtocol) -> dict[str, Any]:
     return asdict(protocol)
 
 
+def protocol_from_bootstrap(
+    payload: Mapping[str, Any],
+) -> GenericProspectiveProtocol:
+    metadata = payload.get("metadata") or {}
+    if metadata.get("phase") != "5H.10":
+        raise ValueError("bootstrap artifact must be Phase 5H.10")
+    if metadata.get("research_only") is not True:
+        raise ValueError("bootstrap must be research_only")
+    if metadata.get("phase6_blocked") is not True:
+        raise ValueError("bootstrap must keep phase6_blocked=true")
+    if metadata.get("execution_enabled") is not False:
+        raise ValueError("bootstrap must keep execution_enabled=false")
+    if metadata.get("testnet_enabled") is not False:
+        raise ValueError("bootstrap must keep testnet_enabled=false")
+    if metadata.get("automatic_promotion") is not False:
+        raise ValueError("bootstrap must keep automatic_promotion=false")
+    return GenericProspectiveProtocol(**dict(payload["protocol"]))
+
+
 def _observation_key(item: Mapping[str, Any]) -> tuple[str, str, int]:
     return (
         str(item["cohort"]),

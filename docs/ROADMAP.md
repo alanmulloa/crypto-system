@@ -179,6 +179,15 @@
 - adapter layer only; existing XRP 5G remains untouched
 - no Testnet, execution or automatic promotion
 
+#### Phase 5H.11 - Generic Prospective Review / Decision ✅
+- WAITING_FOR_CANDIDATE_SIGNAL / WAITING_FOR_MATURITY
+- ACCUMULATING_MATURED_SAMPLE / REVIEW_REQUIRED
+- NOT_READY / INCONCLUSIVE / PASS_RESEARCH / FAIL_RESEARCH
+- pre-registered return, positive-rate and uplift criteria
+- integrity and frozen-definition validation required
+- PASS_RESEARCH never unblocks Phase 6
+- existing XRP 5G remains untouched
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
