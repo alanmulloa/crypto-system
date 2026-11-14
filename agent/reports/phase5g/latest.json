@@ -1,5 +1,5 @@
 {
-  "as_of_ms": 1794599076917,
+  "as_of_ms": 1794637694904,
   "baseline": {
     "average_net_return_pct": 0.03576647421709511,
     "cohort": "baseline",
@@ -28,7 +28,7 @@
   },
   "frozen_at_ms": 1794348615195,
   "metadata": {
-    "created_at": "2026-11-13T19:45:00.340840+00:00",
+    "created_at": "2026-11-14T06:28:32.673226+00:00",
     "lookback_days_for_indicators": 90,
     "phase": "5G-prospective",
     "public_binance_only": true,
