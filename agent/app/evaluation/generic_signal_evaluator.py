@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from app.evaluation.historical import HistoricalPoint
 from app.evaluation.prospective_bootstrap import GenericProspectiveProtocol
 from app.market.types import TimeframeAnalysis
