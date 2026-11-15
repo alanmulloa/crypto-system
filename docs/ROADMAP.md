@@ -188,6 +188,45 @@
 - PASS_RESEARCH never unblocks Phase 6
 - existing XRP 5G remains untouched
 
+#### Phase 5H.12 - Generic Signal Evaluator ✅
+- resolves frozen feature/operator/threshold against signal-time data
+- supports all discovery features eligible for generic prospective research
+- requires matching symbol, strategy, WATCH state and direction
+
+#### Phase 5H.13 - Public Generic Prospective Runner ✅
+- reuses BinancePublicClient + HistoricalSanityRunner
+- public Spot data only; no credentials
+- pre-freeze data is lookback only
+- emits the 5H.10 prospective contract
+
+#### Phase 5H.14 - Multi-experiment Planner ✅
+- separates canonical XRP 5G from generic Phase 5H experiments
+- FROZEN -> bootstrap required
+- generic PROSPECTIVE -> collect evidence
+- no automatic lifecycle transitions
+
+#### Phase 5H.15 - Scheduled Generic Orchestrator ✅
+- runs every six hours
+- public data -> continuity -> immutable history -> review -> decision
+- no-op when no generic PROSPECTIVE experiment exists
+- canonical XRP remains on Phase 5G
+
+#### Phase 5H.16 - Research Lineage Audit ✅
+- verifies artifact phases, experiment ids and frozen fingerprints
+- detects definition drift
+- verifies Phase 6 remains blocked
+
+#### Phase 5H.17 - Human Review Dossier ✅
+- consolidated experiment status, progress, decision and next allowed action
+- phase6_eligible=false for every research experiment
+- no automatic promotion
+
+#### Phase 5H.18 - Research Infrastructure Completion ✅
+- README / roadmap / architecture reconciled
+- generic future-candidate path complete
+- XRP 5G compatibility preserved
+- Phase 6 remains a separate human gate
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
