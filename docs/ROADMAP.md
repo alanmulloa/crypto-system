@@ -154,6 +154,40 @@
 - calibration and OOS are not read
 - PASS_VALIDATION only enables a separate human freeze review
 
+#### Phase 5H.8 - Freeze Review Protocol ✅
+- requires PASS_CALIBRATION + PASS_VALIDATION artifacts
+- full experiment-definition snapshots required
+- exact registry/artifact definition equality
+- READY_FOR_FREEZE / NOT_READY_FOR_FREEZE / INCONCLUSIVE
+- no registry writes or automatic freeze
+- Phase 6 remains blocked
+
+#### Phase 5H.9 - Freeze Manifest ✅
+- deterministic pre-freeze definition fingerprint
+- canonical SHA-256 fingerprints for calibration/validation evidence
+- rechecks 5H.8 readiness before manifest creation
+- freeze timestamp remains pending
+- no registry writes or automatic freeze
+- Phase 6 remains blocked
+
+#### Phase 5H.10 - Generic Prospective Bootstrap ✅
+- generic protocol derived only from FROZEN registry experiments
+- freeze manifest fingerprint verification
+- registry-defined outcome horizon, fees and slippage
+- strictly post-freeze observations
+- immutable history/continuity gate
+- adapter layer only; existing XRP 5G remains untouched
+- no Testnet, execution or automatic promotion
+
+#### Phase 5H.11 - Generic Prospective Review / Decision ✅
+- WAITING_FOR_CANDIDATE_SIGNAL / WAITING_FOR_MATURITY
+- ACCUMULATING_MATURED_SAMPLE / REVIEW_REQUIRED
+- NOT_READY / INCONCLUSIVE / PASS_RESEARCH / FAIL_RESEARCH
+- pre-registered return, positive-rate and uplift criteria
+- integrity and frozen-definition validation required
+- PASS_RESEARCH never unblocks Phase 6
+- existing XRP 5G remains untouched
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
