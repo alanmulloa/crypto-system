@@ -87,6 +87,34 @@ def protocol_to_dict(protocol: GenericProspectiveProtocol) -> dict[str, Any]:
     return asdict(protocol)
 
 
+def assert_protocol_matches_experiment(
+    protocol: GenericProspectiveProtocol,
+    experiment: ResearchExperiment,
+) -> None:
+    if experiment.status not in {
+        ExperimentStatus.FROZEN,
+        ExperimentStatus.PROSPECTIVE,
+    }:
+        raise ValueError("generic prospective experiment must be FROZEN or PROSPECTIVE")
+    expected = {
+        "experiment_id": experiment.id,
+        "symbol": experiment.symbol,
+        "strategy": experiment.strategy,
+        "direction": experiment.direction,
+        "feature": experiment.feature,
+        "operator": experiment.operator,
+        "threshold": experiment.threshold,
+        "frozen_at_ms": experiment.freeze_at_ms,
+        "outcome_hours": experiment.outcome_hours,
+        "fee_bps": experiment.fee_bps,
+        "slippage_bps": experiment.slippage_bps,
+    }
+    actual = protocol_to_dict(protocol)
+    for field, value in expected.items():
+        if actual[field] != value:
+            raise ValueError(f"generic prospective protocol drift: {field}")
+
+
 def protocol_from_bootstrap(
     payload: Mapping[str, Any],
 ) -> GenericProspectiveProtocol:
