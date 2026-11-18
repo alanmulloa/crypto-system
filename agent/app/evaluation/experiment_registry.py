@@ -269,6 +269,26 @@ class ExperimentRegistry:
         )
 
 
+def experiment_definition_snapshot(
+    experiment: ResearchExperiment,
+) -> dict[str, Any]:
+    return {
+        "id": experiment.id,
+        "symbol": experiment.symbol,
+        "strategy": experiment.strategy,
+        "direction": experiment.direction,
+        "feature": experiment.feature,
+        "operator": experiment.operator,
+        "threshold": experiment.threshold,
+        "calibration_period": experiment.calibration_period,
+        "validation_period": experiment.validation_period,
+        "freeze_at_ms": experiment.freeze_at_ms,
+        "outcome_hours": experiment.outcome_hours,
+        "fee_bps": experiment.fee_bps,
+        "slippage_bps": experiment.slippage_bps,
+    }
+
+
 def registry_from_experiments(
     experiments: Sequence[ResearchExperiment],
 ) -> ExperimentRegistry:
