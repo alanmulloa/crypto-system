@@ -91,13 +91,17 @@ def build_research_control_plane(
         if phase5m_root is not None
         else None
     )
-    dependencies = build_dependency_status(
-        phase5g_review=phase5g_review,
-        phase5g_decision=phase5g_decision,
-        phase5m_latest=phase5m_latest,
-        phase5m_incidents=phase5m_incidents,
-        campaign_governance=campaign_governance,
-        writer_policy=writer_policy,
+    dependencies = (
+        build_dependency_status(
+            phase5g_review=phase5g_review,
+            phase5g_decision=phase5g_decision,
+            phase5m_latest=phase5m_latest,
+            phase5m_incidents=phase5m_incidents,
+            campaign_governance=campaign_governance,
+            writer_policy=writer_policy,
+        )
+        if phase5m_root is not None
+        else None
     )
 
     experiments = []
@@ -231,7 +235,7 @@ def build_research_control_plane(
         "HUMAN_ACTION_REQUIRED"
         if human_actions
         else "WAITING_FOR_DEPENDENCIES"
-        if dependencies.get("ready") is not True
+        if dependencies is not None and dependencies.get("ready") is not True
         else "BLOCKED"
         if blockers
         else "HEALTHY"
