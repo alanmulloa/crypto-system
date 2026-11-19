@@ -396,4 +396,14 @@
 - Apps Script Agent bridge
 - unified Agent panel in the existing web
 - graceful offline fallback and no automatic execution
+
+### Phase 8I–8P - Wallet & Portfolio Productization ✅
+- backward-compatible wallet/on-chain sync contract 1.1
+- Agent wallet inventory by network
+- masked public addresses
+- on-chain holding projection
+- wallet freshness health
+- reconciliation issue model
+- unified Agent-first wallet panel with Tracker fallback
+- no wallet writes, keys, withdrawals or automatic execution
 ## Phase 9 - Auto Limited
