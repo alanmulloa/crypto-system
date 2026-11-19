@@ -265,6 +265,14 @@
 - 5L.6 daily read-only workflow
 - 5L.7 no automatic screening/registration and Phase 6 remains blocked
 
+### Phase 5M - Campaign Evidence Durability & Alerts ✅
+- 5M.1 immutable daily Phase 5L operations history
+- 5M.2 continuity + campaign fingerprint drift gate
+- 5M.3 operational incident detector for gaps/staleness/duplicates/Spot availability
+- 5M.4 durable repository history beyond temporary workflow artifacts
+- 5M.5 daily scheduled persistence and incident refresh
+- 5M.6 no strategy mutation, registration or Phase 6 activation
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
