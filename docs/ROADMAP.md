@@ -294,6 +294,23 @@
 - Phase 6 eligibility remains false
 - campaign operations hardening complete when healthy and reproducible
 
+### Phase 5R - Shared Research Main-Writer Lock ✅
+- Phase 5G / generic 5H / Phase 5M writers share one concurrency group
+- cancel-in-progress remains false
+
+### Phase 5S - Safe Evidence Push Protocol ✅
+- all research main-writers fetch full history
+- git pull --rebase origin main before push
+- conflicts fail safely; no forced push
+
+### Phase 5T - Writer Policy Audit ✅
+- deterministic CI audit of writer permissions, lock, checkout and push policy
+- workflow changes cannot silently bypass writer hardening
+
+### Phase 5U - Research Writer Hardening Completion ✅
+- automated research evidence writes are serialized and auditable
+- no strategy/lifecycle/Phase 6 behavior changed
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
