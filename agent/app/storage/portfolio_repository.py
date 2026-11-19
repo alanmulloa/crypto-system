@@ -34,6 +34,17 @@ class InMemoryPortfolioSyncRepository(PortfolioSyncRepository):
     ) -> None:
         self.records.append((export, snapshot, content_hash))
 
+    def latest_export(self, source_id: str) -> TrackerPortfolioExport | None:
+        matches = [
+            item
+            for item in self.records
+            if item[0].source_id == source_id
+        ]
+        if not matches:
+            return None
+        export, _, _ = max(matches, key=lambda item: item[0].generated_at)
+        return export
+
 
 class SupabasePortfolioSyncRepository(PortfolioSyncRepository):
     def __init__(self, url: str, service_role_key: str, timeout_seconds: float = 10.0):
@@ -73,6 +84,26 @@ class SupabasePortfolioSyncRepository(PortfolioSyncRepository):
             content_hash=str(rows[0]["content_hash"]),
             generated_at=datetime.fromisoformat(str(rows[0]["generated_at"]).replace("Z", "+00:00")),
         )
+
+    def latest_export(self, source_id: str) -> TrackerPortfolioExport | None:
+        query = urlencode(
+            {
+                "source_id": f"eq.{source_id}",
+                "select": "raw_payload",
+                "order": "generated_at.desc",
+                "limit": "1",
+            }
+        )
+        request = Request(
+            f"{self.url}/rest/v1/portfolio_syncs?{query}",
+            headers=self._headers,
+            method="GET",
+        )
+        with urlopen(request, timeout=self.timeout_seconds) as response:  # noqa: S310
+            rows: list[dict[str, Any]] = json.loads(response.read().decode("utf-8"))
+        if not rows:
+            return None
+        return TrackerPortfolioExport.model_validate(rows[0]["raw_payload"])
 
     def save(
         self,
