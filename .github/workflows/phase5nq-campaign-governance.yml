@@ -1,0 +1,71 @@
+name: Phase 5N-5Q campaign governance
+
+on:
+  schedule:
+    - cron: "29 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  governance:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+      - run: ruff check app tests
+      - run: pytest -q
+
+      - name: Ensure durable Phase 5M inputs exist
+        run: |
+          test -f reports/phase5m/latest.json
+          test -f reports/phase5m/incidents.json
+
+      - name: Build incident recovery plan
+        run: |
+          python -m app.evaluation.campaign_recovery_cli \
+            --incidents reports/phase5m/incidents.json \
+            --output reports/phase5nq/recovery.json
+
+      - name: Build reproducibility manifest
+        run: |
+          python -m app.evaluation.campaign_reproducibility_cli \
+            --campaign research/campaigns/core-mean-reversion-forward-2026-11.json \
+            --operations reports/phase5m/latest.json \
+            --incidents reports/phase5m/incidents.json \
+            --recovery reports/phase5nq/recovery.json \
+            --output reports/phase5nq/reproducibility.json
+
+      - name: Build human review pack
+        run: |
+          python -m app.evaluation.campaign_review_pack_cli \
+            --operations reports/phase5m/latest.json \
+            --incidents reports/phase5m/incidents.json \
+            --recovery reports/phase5nq/recovery.json \
+            --reproducibility reports/phase5nq/reproducibility.json \
+            --output reports/phase5nq/review-pack.json
+
+      - name: Build governance status
+        run: |
+          python -m app.evaluation.campaign_governance_cli \
+            --review-pack reports/phase5nq/review-pack.json \
+            --reproducibility reports/phase5nq/reproducibility.json \
+            --output reports/phase5nq/governance.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase5nq-campaign-governance
+          path: agent/reports/phase5nq
+          if-no-files-found: error
+          retention-days: 30

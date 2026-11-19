@@ -273,6 +273,27 @@
 - 5M.5 daily scheduled persistence and incident refresh
 - 5M.6 no strategy mutation, registration or Phase 6 activation
 
+### Phase 5N - Incident Response & Recovery ✅
+- deterministic incident-to-action recovery plan
+- all recovery actions require human review
+- no strategy changes or registry writes
+
+### Phase 5O - Research Reproducibility ✅
+- deterministic SHA-256 manifest over campaign + operations + incidents + recovery
+- exact-input verification
+- no automatic repair
+
+### Phase 5P - Human Campaign Review Pack ✅
+- progress + readiness + incidents + recovery + reproducibility
+- explicit human-review states
+- no automatic screening
+
+### Phase 5Q - Research Operations Hardening ✅
+- consolidated governance status
+- operational-health + reproducibility checks
+- Phase 6 eligibility remains false
+- campaign operations hardening complete when healthy and reproducible
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
