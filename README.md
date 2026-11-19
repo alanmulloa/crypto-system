@@ -21,6 +21,7 @@ auditable para registrar futuros experimentos sin mezclarlos con 5G.
 | Phase 5H — research lifecycle infrastructure | COMPLETE |
 | Phase 5I — research operations & observability | COMPLETE |
 | Phase 5J — Phase 6 readiness & governance | COMPLETE |
+| Phase 5K — parallel research pipeline | COLLECTING / PRE-REGISTERED |
 | Phase 6 | BLOCKED |
 
 `sample_ready=true` no es aprobación. Tampoco `PASS_RESEARCH` autoriza

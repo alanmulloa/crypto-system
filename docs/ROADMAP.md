@@ -245,6 +245,17 @@
 - 5J.6 informational Testnet dry-run plan with zero API calls/orders
 - 5J.7 Phase 6 remains blocked until a separate future activation decision
 
+### Phase 5K - Parallel Research Pipeline 🔬
+- 5K.1 fixed five-symbol Mean Reversion research universe
+- 5K.2 pre-registered future campaign window: 2026-11-20 -> 2027-05-19 UTC
+- 5K.3 existing 5F.1 diagnostics reused after campaign maturity
+- 5K.4 existing proposal gate reused; no threshold optimization
+- 5K.5 maximum two concurrent new research experiments with diversity limits
+- 5K.6 READY_FOR_HUMAN_REGISTRATION queue; no automatic registry writes
+- 5K.7 weekly campaign maturity/screening workflow
+- 5K.8 research portfolio dashboard artifact
+- XRP Phase 5G continues independently and unchanged
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
