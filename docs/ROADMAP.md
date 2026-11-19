@@ -386,4 +386,14 @@
 
 ## Phase 7 - External Signals
 ## Phase 8 - Dashboard Integration
+
+### Phase 8A–8H - Web + Agent Integration ✅
+- stable read-only Agent dashboard contract
+- latest synchronized portfolio read model
+- portfolio/risk/custody/liquidity projection
+- safety and execution-boundary status
+- explicit separation of legacy Tracker vs Agent recommendations
+- Apps Script Agent bridge
+- unified Agent panel in the existing web
+- graceful offline fallback and no automatic execution
 ## Phase 9 - Auto Limited
