@@ -6,6 +6,7 @@ from typing import Any
 from app.config import Settings
 from app.portfolio.exposure import analyze_exposure
 from app.portfolio.sync import TrackerPortfolioExport
+from app.portfolio.wallet_projection import build_wallet_inventory
 
 
 def build_agent_dashboard(
@@ -22,6 +23,12 @@ def build_agent_dashboard(
     daily_buy_remaining = max(
         settings.max_daily_buy_usd - snapshot.daily_buy_used_usd,
         0.0,
+    )
+    wallet_inventory = build_wallet_inventory(
+        wallet_rows=export.wallet_rows,
+        onchain_rows=export.onchain_rows,
+        reconciliation_rows=export.onchain_reconciliation_rows,
+        as_of=export.generated_at,
     )
 
     assets = []
@@ -115,11 +122,15 @@ def build_agent_dashboard(
             "automatic_execution": False,
             "human_confirmation_required": True,
         },
+        "wallets": wallet_inventory,
         "data_quality": {
             "daily_loss_guard_available": snapshot.daily_loss_guard_available,
             "unknown_custody_usd": exposure.unknown_custody_usd,
             "multi_source_unattributed_usd": exposure.multi_source_unattributed_usd,
             "unknown_liquidity_usd": exposure.unknown_liquidity_usd,
+            "wallet_reconciliation_healthy": wallet_inventory["reconciliation_healthy"],
+            "wallet_reconciliation_issue_count": wallet_inventory["reconciliation_issue_count"],
+            "stale_wallet_count": wallet_inventory["stale_wallet_count"],
         },
         "assets": assets,
     }
