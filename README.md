@@ -30,6 +30,7 @@ auditable para registrar futuros experimentos sin mezclarlos con 5G.
 | Phase 5AA–5AE — durable control plane | COMPLETE |
 | Phase 5AK–5AO — campaign launch guard | COMPLETE |
 | Phase 6 | BLOCKED |
+| Phase 8A–8H — web + Agent integration | COMPLETE |
 
 `sample_ready=true` no es aprobación. Tampoco `PASS_RESEARCH` autoriza
 Testnet, órdenes o ejecución: Phase 6 exige una decisión humana separada.
@@ -119,6 +120,15 @@ pytest -q
 ```
 
 Los módulos puros de Market Intelligence también son compatibles con `unittest`, lo que permite validar lógica sin dependencias de red.
+
+## Web + Agent
+
+Phase 8A–8H connects the existing Crypto Tracker web to the Agent through a
+read-only portfolio dashboard API. The web now has a separate Agent layer for
+portfolio, risk, exposure and safety state. Legacy Tracker recommendations remain
+visibly distinct from Agent recommendations; the Agent continues to expose
+research-only / non-authoritative recommendations until prospective validation
+passes.
 
 ## Próximo paso
 
