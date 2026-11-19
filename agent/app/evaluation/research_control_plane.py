@@ -42,6 +42,9 @@ def build_research_control_plane(
     human_actions = []
     blockers = []
 
+    def stable_id(kind: str, subject: str | None) -> str:
+        return _sha({"kind": kind, "subject": subject})[:16]
+
     for item in registry.experiments:
         row = {
             "experiment_id": item.id,
@@ -76,6 +79,7 @@ def build_research_control_plane(
             if decision == "PASS_RESEARCH":
                 human_actions.append(
                     {
+                        "id": stable_id("HUMAN_PHASE6_REVIEW_REQUIRED", item.id),
                         "type": "HUMAN_PHASE6_REVIEW_REQUIRED",
                         "subject": item.id,
                     }
@@ -83,6 +87,7 @@ def build_research_control_plane(
             elif decision == "FAIL_RESEARCH":
                 human_actions.append(
                     {
+                        "id": stable_id("HUMAN_RESEARCH_REVIEW_REQUIRED", item.id),
                         "type": "HUMAN_RESEARCH_REVIEW_REQUIRED",
                         "subject": item.id,
                     }
@@ -90,6 +95,7 @@ def build_research_control_plane(
             else:
                 blockers.append(
                     {
+                        "id": stable_id("PROSPECTIVE_SAMPLE_INCOMPLETE", item.id),
                         "code": "PROSPECTIVE_SAMPLE_INCOMPLETE",
                         "subject": item.id,
                     }
@@ -111,6 +117,10 @@ def build_research_control_plane(
         }
         blockers.append(
             {
+                "id": stable_id(
+                    "CAMPAIGN_GOVERNANCE_NOT_YET_AVAILABLE",
+                    "core-mean-reversion-forward-2026-11",
+                ),
                 "code": "CAMPAIGN_GOVERNANCE_NOT_YET_AVAILABLE",
                 "subject": "core-mean-reversion-forward-2026-11",
             }
@@ -146,6 +156,10 @@ def build_research_control_plane(
     if writer_policy is not None and writer_policy.get("all_compliant") is not True:
         blockers.append(
             {
+                "id": stable_id(
+                    "RESEARCH_MAIN_WRITER_POLICY_NONCOMPLIANT",
+                    "research-main-writer",
+                ),
                 "code": "RESEARCH_MAIN_WRITER_POLICY_NONCOMPLIANT",
                 "subject": "research-main-writer",
             }

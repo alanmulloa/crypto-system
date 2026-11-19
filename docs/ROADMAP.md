@@ -327,6 +327,24 @@
 - single read-only operational snapshot with SHA-256
 - Phase 6 remains ineligible and blocked
 
+### Phase 5AA - Durable Control-Plane State ✅
+- last material control-plane state persists across scheduled runs
+
+### Phase 5AB - Material Transition Ledger ✅
+- immutable history/events only when state changes materially
+- timestamp-only churn creates no repository commit
+
+### Phase 5AC - Stable Human Action / Blocker IDs ✅
+- deterministic IDs prevent duplicate action noise across runs
+
+### Phase 5AD - Control Plane Main-Writer Integration ✅
+- fourth writer joins shared research-main-writer lock and safe rebase protocol
+- writer policy audit covers control-plane persistence
+
+### Phase 5AE - Control-Plane Durability Completion ✅
+- first/no-change/state-transition semantics are durable across runs
+- Phase 6 remains blocked
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6

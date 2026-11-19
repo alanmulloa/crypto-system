@@ -27,6 +27,7 @@ auditable para registrar futuros experimentos sin mezclarlos con 5G.
 | Phase 5N–5Q — research operations hardening | COMPLETE |
 | Phase 5R–5U — research main-writer hardening | COMPLETE |
 | Phase 5V–5Z — unified research control plane | COMPLETE |
+| Phase 5AA–5AE — durable control plane | COMPLETE |
 | Phase 6 | BLOCKED |
 
 `sample_ready=true` no es aprobación. Tampoco `PASS_RESEARCH` autoriza
