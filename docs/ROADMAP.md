@@ -311,6 +311,22 @@
 - automated research evidence writes are serialized and auditable
 - no strategy/lifecycle/Phase 6 behavior changed
 
+### Phase 5V - Unified Research State ✅
+- one control-plane artifact across registry, XRP 5G, campaign governance and writer policy
+
+### Phase 5W - Research Blocker Graph ✅
+- explicit blockers with no automatic remediation
+
+### Phase 5X - Human Action Inbox ✅
+- only explicit human research/review/screening actions surfaced
+
+### Phase 5Y - Material State Change Detection ✅
+- ignores timestamp-only churn and reports material control-plane changes
+
+### Phase 5Z - Research Control Plane Completion ✅
+- single read-only operational snapshot with SHA-256
+- Phase 6 remains ineligible and blocked
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
