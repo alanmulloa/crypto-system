@@ -1,8 +1,6 @@
 name: Phase 5N-5Q campaign governance
 
 on:
-  schedule:
-    - cron: "29 7 * * *"
   workflow_dispatch:
 
 permissions:

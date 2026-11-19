@@ -25,18 +25,80 @@ def _sha(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def build_dependency_status(
+    *,
+    phase5g_review: Mapping[str, Any] | None,
+    phase5g_decision: Mapping[str, Any] | None,
+    phase5m_latest: Mapping[str, Any] | None,
+    phase5m_incidents: Mapping[str, Any] | None,
+    campaign_governance: Mapping[str, Any] | None,
+    writer_policy: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    phase5g_ready = phase5g_review is not None and phase5g_decision is not None
+    campaign_inputs_ready = (
+        phase5m_latest is not None and phase5m_incidents is not None
+    )
+    campaign_governance_ready = (
+        campaign_governance is not None if campaign_inputs_ready else False
+    )
+    writer_policy_ready = (
+        writer_policy is not None and writer_policy.get("all_compliant") is True
+    )
+
+    missing: list[str] = []
+    if not phase5g_ready:
+        missing.append("PHASE5G_EVIDENCE")
+    if not campaign_inputs_ready:
+        missing.append("PHASE5M_DURABLE_INPUTS")
+    elif not campaign_governance_ready:
+        missing.append("PHASE5NQ_GOVERNANCE")
+    if not writer_policy_ready:
+        missing.append("WRITER_POLICY")
+
+    return {
+        "phase": "5AH",
+        "phase5g_ready": phase5g_ready,
+        "campaign_inputs_ready": campaign_inputs_ready,
+        "campaign_governance_ready": campaign_governance_ready,
+        "writer_policy_ready": writer_policy_ready,
+        "ready": not missing,
+        "missing": missing,
+        "research_only": True,
+        "phase6_blocked": True,
+    }
+
+
 def build_research_control_plane(
     *,
     registry: ExperimentRegistry,
     phase5g_root: Path,
     campaign_governance_path: Path,
     writer_policy_path: Path,
+    phase5m_root: Path | None = None,
     generated_at: datetime,
 ) -> dict[str, Any]:
     phase5g_review = _read_json(phase5g_root / "review.json")
     phase5g_decision = _read_json(phase5g_root / "decision.json")
     campaign_governance = _read_json(campaign_governance_path)
     writer_policy = _read_json(writer_policy_path)
+    phase5m_latest = (
+        _read_json(phase5m_root / "latest.json")
+        if phase5m_root is not None
+        else None
+    )
+    phase5m_incidents = (
+        _read_json(phase5m_root / "incidents.json")
+        if phase5m_root is not None
+        else None
+    )
+    dependencies = build_dependency_status(
+        phase5g_review=phase5g_review,
+        phase5g_decision=phase5g_decision,
+        phase5m_latest=phase5m_latest,
+        phase5m_incidents=phase5m_incidents,
+        campaign_governance=campaign_governance,
+        writer_policy=writer_policy,
+    )
 
     experiments = []
     human_actions = []
@@ -168,6 +230,8 @@ def build_research_control_plane(
     state = (
         "HUMAN_ACTION_REQUIRED"
         if human_actions
+        else "WAITING_FOR_DEPENDENCIES"
+        if dependencies.get("ready") is not True
         else "BLOCKED"
         if blockers
         else "HEALTHY"
@@ -179,6 +243,7 @@ def build_research_control_plane(
         "experiments": experiments,
         "campaign": campaign,
         "writer_policy": writer,
+        "dependencies": dependencies,
         "blockers": blockers,
         "human_action_inbox": human_actions,
         "research_only": True,
