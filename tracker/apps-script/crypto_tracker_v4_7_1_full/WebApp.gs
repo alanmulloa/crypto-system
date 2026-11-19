@@ -20,6 +20,9 @@ function getFrontData() {
   const calibrationRows = readSheetObjectsFront_(ss, 'Calibracion pronosticos');
   const historicalReconRows = readSheetObjectsFront_(ss, 'Conciliacion historica');
   const operations = (typeof getRecentOperationsV47_ === 'function') ? getRecentOperationsV47_(20) : [];
+  const agent = (typeof fetchAgentDashboardV50_ === 'function')
+    ? fetchAgentDashboardV50_()
+    : { available: false, state: 'BRIDGE_MISSING', message: 'Agent bridge no disponible.' };
 
   const marketByAsset = indexByAssetFront_(mercado);
   const allocByAsset = indexByAssetFront_(asignacion);
@@ -267,7 +270,8 @@ function getFrontData() {
 
   return {
     generatedAt: new Date().toISOString(),
-    versions: { front: 'v4.7.1', backend: 'v2.9.0' },
+    versions: { front: 'v5.0.0', backend: 'v2.9.0', agent: 'Phase 8' },
+    agent,
     summary: {
       total,
       usdc: usdc?.valueUsd || 0,
