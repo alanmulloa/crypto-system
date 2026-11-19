@@ -19,6 +19,7 @@ auditable para registrar futuros experimentos sin mezclarlos con 5G.
 | Phase 5G.3 — decision protocol | COMPLETE |
 | Phase 5G.4 — prospective evidence | COLLECTING PROSPECTIVE EVIDENCE |
 | Phase 5H — research lifecycle infrastructure | COMPLETE |
+| Phase 5I — research operations & observability | COMPLETE |
 | Phase 6 | BLOCKED |
 
 `sample_ready=true` no es aprobación. Tampoco `PASS_RESEARCH` autoriza
@@ -116,6 +117,7 @@ Phase 5G.4 continúa acumulando evidencia prospectiva con la definición congela
 de XRP. Phase 5H ya cubre el ciclo completo para futuras candidatas: discovery,
 registro, calibration, validation, freeze review, manifest, recolección
 prospectiva genérica, auditoría y dossier de revisión. El XRP actual permanece
-en su pipeline 5G sin migración automática. Phase 6 sigue bloqueada hasta una
-decisión humana separada; no existe promoción automática desde resultados de
-investigación.
+en su pipeline 5G sin migración automática. Phase 5I añade observabilidad de
+frescura, escasez de señales y salud operativa sin cambiar ninguna regla
+congelada. Phase 6 sigue bloqueada hasta una decisión humana separada; no existe
+promoción automática desde resultados de investigación.

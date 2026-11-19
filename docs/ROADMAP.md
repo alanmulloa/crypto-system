@@ -227,6 +227,15 @@
 - XRP 5G compatibility preserved
 - Phase 6 remains a separate human gate
 
+### Phase 5I - Research Operations & Observability ✅
+- 5I.1 evidence freshness monitor
+- 5I.2 prospective signal-scarcity monitor
+- 5I.3 consolidated research-health states
+- 5I.4 operational action queue with no registry writes
+- 5I.5 scheduled read-only health report every 12 hours
+- 5I.6 no-signal periods cannot alter frozen research definitions
+- Phase 6 remains blocked
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
