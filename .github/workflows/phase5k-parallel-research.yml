@@ -1,0 +1,46 @@
+name: Phase 5K parallel research campaign
+
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  campaign-status:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+      - run: ruff check app tests
+      - run: pytest -q
+
+      - name: Evaluate fixed research campaign
+        env:
+          BINANCE_MARKET_BASE_URL: https://data-api.binance.vision
+        run: |
+          python -m app.evaluation.research_campaign_cli \
+            --campaign research/campaigns/core-mean-reversion-forward-2026-11.json \
+            --registry research/experiment-registry.json \
+            --status-output reports/phase5k/campaign-status.json \
+            --screen-output reports/phase5k/campaign-screen.json \
+            --queue-output reports/phase5k/promotion-queue.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase5k-parallel-research
+          path: agent/reports/phase5k
+          if-no-files-found: error
+          retention-days: 30

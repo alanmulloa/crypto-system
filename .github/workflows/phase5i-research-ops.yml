@@ -1,0 +1,44 @@
+name: Phase 5I research operations health
+
+on:
+  schedule:
+    - cron: "11 */12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  research-health:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+      - run: ruff check app tests
+      - run: pytest -q
+
+      - name: Build research operations report
+        run: |
+          python -m app.evaluation.research_ops_cli \
+            --registry research/experiment-registry.json \
+            --phase5g-root reports/phase5g \
+            --generic-root reports/prospective \
+            --max-age-hours 12 \
+            --output reports/research-ops.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase5i-research-ops
+          path: agent/reports/research-ops.json
+          if-no-files-found: error
+          retention-days: 30

@@ -7,7 +7,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
-from app.evaluation.experiment_registry import ExperimentRegistry
+from app.evaluation.experiment_registry import (
+    ExperimentRegistry,
+    experiment_definition_snapshot,
+)
 from app.evaluation.validation_harness import (
     MIN_VALIDATION_OBSERVATIONS,
     MIN_VALIDATION_UPLIFT_PCT_POINTS,
@@ -70,6 +73,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 MIN_VALIDATION_UPLIFT_PCT_POINTS
             ),
         },
+        "experiment_definition": experiment_definition_snapshot(experiment),
         "review": asdict(review),
     }
 
