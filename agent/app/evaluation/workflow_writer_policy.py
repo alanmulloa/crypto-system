@@ -9,6 +9,7 @@ EXPECTED_WRITERS = (
     ".github/workflows/phase5g-prospective.yml",
     ".github/workflows/phase5h-generic-prospective.yml",
     ".github/workflows/phase5m-campaign-operations.yml",
+    ".github/workflows/phase5vz-research-control-plane.yml",
 )
 SHARED_GROUP = "research-main-writer"
 
