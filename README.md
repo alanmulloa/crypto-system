@@ -25,6 +25,7 @@ auditable para registrar futuros experimentos sin mezclarlos con 5G.
 | Phase 5L — research campaign operations | COMPLETE |
 | Phase 5M — campaign evidence durability & alerts | COMPLETE |
 | Phase 5N–5Q — research operations hardening | COMPLETE |
+| Phase 5R–5U — research main-writer hardening | COMPLETE |
 | Phase 6 | BLOCKED |
 
 `sample_ready=true` no es aprobación. Tampoco `PASS_RESEARCH` autoriza
