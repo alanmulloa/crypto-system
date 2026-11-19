@@ -345,6 +345,22 @@
 - first/no-change/state-transition semantics are durable across runs
 - Phase 6 remains blocked
 
+### Phase 5AF - In-run Campaign Governance Rebuild ✅
+- control plane rebuilds 5N-5Q from durable 5M inputs before evaluation
+
+### Phase 5AG - In-run Writer Policy Rebuild ✅
+- writer policy is regenerated from current workflow files every control-plane cycle
+
+### Phase 5AH - Explicit Dependency Status ✅
+- XRP evidence, campaign inputs/governance and writer policy readiness are explicit
+
+### Phase 5AI - Bootstrap-Aware Control Plane ✅
+- WAITING_FOR_DEPENDENCIES distinguishes normal bootstrap from research failure
+
+### Phase 5AJ - Scheduled Governance Consolidation ✅
+- control plane owns scheduled governance synthesis
+- standalone 5N-5Q workflow remains manual diagnostic tooling
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6

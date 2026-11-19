@@ -32,6 +32,39 @@ jobs:
       - run: ruff check app tests
       - run: pytest -q
 
+      - name: Rebuild current writer policy
+        run: |
+          python -m app.evaluation.workflow_writer_policy_cli \
+            --root .. \
+            --output reports/phase5t/writer-policy.json
+
+      - name: Rebuild campaign governance when durable inputs exist
+        run: |
+          if test -f reports/phase5m/latest.json && test -f reports/phase5m/incidents.json; then
+            mkdir -p reports/phase5nq
+            python -m app.evaluation.campaign_recovery_cli \
+              --incidents reports/phase5m/incidents.json \
+              --output reports/phase5nq/recovery.json
+            python -m app.evaluation.campaign_reproducibility_cli \
+              --campaign research/campaigns/core-mean-reversion-forward-2026-11.json \
+              --operations reports/phase5m/latest.json \
+              --incidents reports/phase5m/incidents.json \
+              --recovery reports/phase5nq/recovery.json \
+              --output reports/phase5nq/reproducibility.json
+            python -m app.evaluation.campaign_review_pack_cli \
+              --operations reports/phase5m/latest.json \
+              --incidents reports/phase5m/incidents.json \
+              --recovery reports/phase5nq/recovery.json \
+              --reproducibility reports/phase5nq/reproducibility.json \
+              --output reports/phase5nq/review-pack.json
+            python -m app.evaluation.campaign_governance_cli \
+              --review-pack reports/phase5nq/review-pack.json \
+              --reproducibility reports/phase5nq/reproducibility.json \
+              --output reports/phase5nq/governance.json
+          else
+            echo "Phase 5M durable inputs not available yet."
+          fi
+
       - name: Build unified research control plane
         run: |
           python -m app.evaluation.research_control_plane_cli \
@@ -39,6 +72,8 @@ jobs:
             --phase5g-root reports/phase5g \
             --campaign-governance reports/phase5nq/governance.json \
             --writer-policy reports/phase5t/writer-policy.json \
+            --phase5m-root reports/phase5m \
+            --dependencies-output reports/phase5vz/dependencies.json \
             --previous reports/phase5vz/latest.json \
             --output reports/phase5vz/current.json \
             --diff-output reports/phase5vz/diff.json
@@ -54,7 +89,7 @@ jobs:
 
       - name: Commit durable control-plane evidence
         run: |
-          rm -f reports/phase5vz/current.json reports/phase5vz/diff.json
+          rm -f reports/phase5vz/current.json reports/phase5vz/diff.json reports/phase5vz/dependencies.json
           if git diff --quiet -- reports/phase5vz; then
             echo "No material control-plane change."
             exit 0

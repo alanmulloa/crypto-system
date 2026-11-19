@@ -37,6 +37,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default="reports/phase5t/writer-policy.json",
     )
     parser.add_argument(
+        "--phase5m-root",
+        default="reports/phase5m",
+    )
+    parser.add_argument(
+        "--dependencies-output",
+        default="reports/phase5vz/dependencies.json",
+    )
+    parser.add_argument(
         "--previous",
         default="reports/phase5vz/latest.json",
     )
@@ -58,8 +66,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         phase5g_root=Path(args.phase5g_root),
         campaign_governance_path=Path(args.campaign_governance),
         writer_policy_path=Path(args.writer_policy),
+        phase5m_root=Path(args.phase5m_root),
         generated_at=datetime.now(timezone.utc),
     )
+    dependencies_output = Path(args.dependencies_output)
+    dependencies_output.parent.mkdir(parents=True, exist_ok=True)
+    dependencies_output.write_text(
+        json.dumps(
+            current["dependencies"],
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
     previous = _load(Path(args.previous))
     diff = diff_control_plane(previous, current)
 
