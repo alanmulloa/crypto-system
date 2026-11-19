@@ -236,6 +236,15 @@
 - 5I.6 no-signal periods cannot alter frozen research definitions
 - Phase 6 remains blocked
 
+### Phase 5J - Phase 6 Readiness & Governance ✅
+- 5J.1 research gate snapshot from prospective PASS_RESEARCH + sample_ready
+- 5J.2 runtime risk preflight with credential-presence booleans only
+- 5J.3 restrictive Spot-only execution boundary
+- 5J.4 explicit human approval artifact for TESTNET_PREPARATION_ONLY
+- 5J.5 auditable readiness states; no automatic activation
+- 5J.6 informational Testnet dry-run plan with zero API calls/orders
+- 5J.7 Phase 6 remains blocked until a separate future activation decision
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
