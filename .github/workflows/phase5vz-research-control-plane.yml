@@ -1,0 +1,52 @@
+name: Phase 5V-5Z research control plane
+
+on:
+  schedule:
+    - cron: "11 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  control-plane:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+      - run: ruff check app tests
+      - run: pytest -q
+
+      - name: Build unified research control plane
+        run: |
+          python -m app.evaluation.research_control_plane_cli \
+            --registry research/experiment-registry.json \
+            --phase5g-root reports/phase5g \
+            --campaign-governance reports/phase5nq/governance.json \
+            --writer-policy reports/phase5t/writer-policy.json \
+            --previous reports/phase5vz/latest.json \
+            --output reports/phase5vz/current.json \
+            --diff-output reports/phase5vz/diff.json
+
+      - name: Persist workflow-local latest snapshot
+        run: |
+          python -m app.evaluation.research_control_plane_persistence \
+            --current reports/phase5vz/current.json \
+            --latest reports/phase5vz/latest.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase5vz-research-control-plane
+          path: agent/reports/phase5vz
+          if-no-files-found: error
+          retention-days: 30
