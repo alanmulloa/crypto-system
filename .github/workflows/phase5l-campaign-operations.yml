@@ -1,0 +1,45 @@
+name: Phase 5L research campaign operations
+
+on:
+  schedule:
+    - cron: "37 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  campaign-operations:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+      - run: ruff check app tests
+      - run: pytest -q
+
+      - name: Build campaign operations report
+        env:
+          BINANCE_MARKET_BASE_URL: https://data-api.binance.vision
+        run: |
+          python -m app.evaluation.campaign_operations_cli \
+            --campaign research/campaigns/core-mean-reversion-forward-2026-11.json \
+            --registry research/experiment-registry.json \
+            --reports-root reports/phase5k \
+            --output reports/phase5l/campaign-operations.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase5l-campaign-operations
+          path: agent/reports/phase5l/campaign-operations.json
+          if-no-files-found: error
+          retention-days: 30

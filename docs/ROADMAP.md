@@ -256,6 +256,15 @@
 - 5K.8 research portfolio dashboard artifact
 - XRP Phase 5G continues independently and unchanged
 
+### Phase 5L - Research Campaign Operations ✅
+- 5L.1 deterministic campaign progress / elapsed / remaining / percent
+- 5L.2 public Spot market-data health across 15m/1h/4h/1d
+- 5L.3 screening readiness requires fixed-window completion + data health + fingerprint integrity
+- 5L.4 Phase 5K promotion queue surfaced without registry writes
+- 5L.5 consolidated campaign operations dashboard artifact
+- 5L.6 daily read-only workflow
+- 5L.7 no automatic screening/registration and Phase 6 remains blocked
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6
