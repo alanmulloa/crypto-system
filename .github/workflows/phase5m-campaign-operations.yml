@@ -42,6 +42,14 @@ jobs:
             --reports-root reports/phase5k \
             --output reports/phase5m/fresh.json
 
+      - name: Verify sealed campaign launch contract
+        run: |
+          python -m app.evaluation.campaign_launch_cli \
+            --campaign research/campaigns/core-mean-reversion-forward-2026-11.json \
+            --seal research/campaigns/core-mean-reversion-forward-2026-11-launch-seal.json \
+            --operations reports/phase5m/fresh.json \
+            --output reports/phase5m/launch-status.json
+
       - name: Persist immutable campaign history
         run: |
           python -m app.evaluation.campaign_operations_persistence \

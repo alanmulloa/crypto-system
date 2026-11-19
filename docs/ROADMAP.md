@@ -361,6 +361,24 @@
 - control plane owns scheduled governance synthesis
 - standalone 5N-5Q workflow remains manual diagnostic tooling
 
+### Phase 5AK - Pre-registered Campaign Launch Seal ✅
+- exact Phase 5K campaign definition sealed before launch
+
+### Phase 5AL - Campaign Definition Integrity Gate ✅
+- every durable campaign cycle verifies live definition against the launch seal
+
+### Phase 5AM - Pre-start Campaign Readiness ✅
+- PRESTART_READY / PRESTART_DATA_ATTENTION from public market-data health
+
+### Phase 5AN - First-Day Campaign Smoke Check ✅
+- FIRST_DAY_HEALTHY / FIRST_DAY_ATTENTION during first 24 hours
+- no outcome or threshold evaluation
+
+### Phase 5AO - Campaign Launch Completion Guardrails ✅
+- COLLECTING until fixed end date
+- no early screening or threshold optimization
+- Phase 6 remains blocked
+
 ## Phase 6 - Binance Spot Testnet ⛔ BLOCKED
 - requires genuinely unseen prospective evidence and a separate human decision
 - sample_ready and PASS_RESEARCH do not automatically unblock Phase 6

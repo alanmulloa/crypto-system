@@ -1,0 +1,31 @@
+{
+  "phase": "5AK",
+  "campaign_id": "core-mean-reversion-forward-2026-11",
+  "sealed_definition": {
+    "id": "core-mean-reversion-forward-2026-11",
+    "strategy": "mean_reversion",
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "BNBUSDT",
+      "SOLUSDT",
+      "XRPUSDT"
+    ],
+    "start_at": "2026-11-20T00:00:00+00:00",
+    "end_at": "2027-05-19T00:00:00+00:00",
+    "outcome_hours": 24,
+    "min_bucket_observations": 20,
+    "max_points": 8000,
+    "fee_bps": 10.0,
+    "slippage_bps": 5.0,
+    "ruleset": "phase5f1-predefined-buckets-v1",
+    "research_only": true,
+    "auto_register": false,
+    "auto_freeze": false,
+    "phase6_blocked": true
+  },
+  "screening_before_end_forbidden": true,
+  "threshold_optimization_forbidden": true,
+  "research_only": true,
+  "phase6_blocked": true
+}
