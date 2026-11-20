@@ -270,7 +270,7 @@ function getFrontData() {
 
   return {
     generatedAt: new Date().toISOString(),
-    versions: { front: 'v5.1.0', backend: 'v2.9.0', agent: 'Phase 8I-8P' },
+    versions: { front: 'v5.2.0', backend: 'v2.9.0', agent: 'Phase 8Q-8X' },
     agent,
     summary: {
       total,

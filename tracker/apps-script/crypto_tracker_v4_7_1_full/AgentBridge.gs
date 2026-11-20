@@ -48,11 +48,27 @@ function fetchAgentDashboardV50_() {
       };
     }
     const dashboard = JSON.parse(body || '{}');
+
+    let history = null;
+    try {
+      const historyResponse = UrlFetchApp.fetch(base + '/portfolio/history?limit=90', {
+        method: 'get',
+        muteHttpExceptions: true,
+        headers: { Authorization: 'Bearer ' + token }
+      });
+      if (historyResponse.getResponseCode() >= 200 && historyResponse.getResponseCode() < 300) {
+        history = JSON.parse(historyResponse.getContentText() || '{}');
+      }
+    } catch (historyError) {
+      console.log('Agent history fetch: ' + historyError.message);
+    }
+
     const result = {
       available: true,
       state: (dashboard.safety || {}).operational_state || 'UNKNOWN',
       fetchedAt: new Date().toISOString(),
       dashboard,
+      history,
       cached: false
     };
     cache.put('agent-dashboard-v50', JSON.stringify(result), 60);
@@ -70,4 +86,18 @@ function previewAgentDashboardV50() {
   const result = fetchAgentDashboardV50_();
   console.log(JSON.stringify(result, null, 2));
   return result;
+}
+
+
+function invalidateAgentDashboardCacheV52_() {
+  CacheService.getScriptCache().remove('agent-dashboard-v50');
+}
+
+function syncAgentAndFetchV52() {
+  const sync = pushPortfolioSnapshotV48();
+  invalidateAgentDashboardCacheV52_();
+  return {
+    sync,
+    data: getFrontData()
+  };
 }
