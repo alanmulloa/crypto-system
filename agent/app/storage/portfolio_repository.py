@@ -45,6 +45,26 @@ class InMemoryPortfolioSyncRepository(PortfolioSyncRepository):
         export, _, _ = max(matches, key=lambda item: item[0].generated_at)
         return export
 
+    def recent_summaries(self, source_id: str, limit: int = 90) -> list[dict[str, Any]]:
+        matches = [
+            item
+            for item in self.records
+            if item[0].source_id == source_id
+        ]
+        matches.sort(key=lambda item: item[0].generated_at)
+        rows = []
+        for export, snapshot, content_hash in matches[-max(1, limit):]:
+            rows.append(
+                {
+                    "generated_at": export.generated_at.isoformat(),
+                    "content_hash": content_hash,
+                    "total_value_usd": snapshot.total_value_usd,
+                    "cash_value_usd": snapshot.cash_value_usd,
+                    "capital_at_risk_usd": snapshot.capital_at_risk_usd,
+                }
+            )
+        return rows
+
 
 class SupabasePortfolioSyncRepository(PortfolioSyncRepository):
     def __init__(self, url: str, service_role_key: str, timeout_seconds: float = 10.0):
@@ -104,6 +124,29 @@ class SupabasePortfolioSyncRepository(PortfolioSyncRepository):
         if not rows:
             return None
         return TrackerPortfolioExport.model_validate(rows[0]["raw_payload"])
+
+    def recent_summaries(self, source_id: str, limit: int = 90) -> list[dict[str, Any]]:
+        bounded = max(1, min(int(limit), 365))
+        query = urlencode(
+            {
+                "source_id": f"eq.{source_id}",
+                "select": (
+                    "generated_at,content_hash,total_value_usd,"
+                    "cash_value_usd,capital_at_risk_usd"
+                ),
+                "order": "generated_at.desc",
+                "limit": str(bounded),
+            }
+        )
+        request = Request(
+            f"{self.url}/rest/v1/portfolio_syncs?{query}",
+            headers=self._headers,
+            method="GET",
+        )
+        with urlopen(request, timeout=self.timeout_seconds) as response:  # noqa: S310
+            rows: list[dict[str, Any]] = json.loads(response.read().decode("utf-8"))
+        rows.reverse()
+        return rows
 
     def save(
         self,

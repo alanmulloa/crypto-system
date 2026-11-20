@@ -6,6 +6,7 @@ from fastapi import APIRouter, Header, HTTPException, status
 
 from app.config import get_settings
 from app.portfolio.dashboard import build_agent_dashboard
+from app.portfolio.history import build_portfolio_history
 from app.portfolio.sync import PortfolioSyncService, TrackerPortfolioExport
 from app.storage.portfolio_repository import SupabasePortfolioSyncRepository
 
@@ -103,3 +104,36 @@ def portfolio_dashboard(
             detail="no portfolio snapshot available",
         )
     return build_agent_dashboard(export, settings=settings)
+
+
+@router.get("/history")
+def portfolio_history(
+    limit: int = 90,
+    authorization: str | None = Header(default=None),
+):
+    settings = get_settings()
+    if not settings.portfolio_sync_token:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="portfolio history is disabled",
+        )
+
+    token = _bearer_token(authorization)
+    if not token or not hmac.compare_digest(token, settings.portfolio_sync_token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid sync token",
+        )
+
+    if not settings.supabase_url or not settings.supabase_service_role_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="portfolio storage is not configured",
+        )
+
+    repository = SupabasePortfolioSyncRepository(
+        settings.supabase_url,
+        settings.supabase_service_role_key,
+    )
+    rows = repository.recent_summaries("crypto_tracker", limit=limit)
+    return build_portfolio_history(rows)
