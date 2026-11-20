@@ -9,7 +9,7 @@
  *   CRYPTO_AGENT_SYNC_TOKEN
  */
 
-const CT_PORTFOLIO_SYNC_SCHEMA = '1.0';
+const CT_PORTFOLIO_SYNC_SCHEMA = '1.1';
 
 function portfolioRowsAsObjectsV48_(sheetName) {
   const sh = SpreadsheetApp.getActive().getSheetByName(sheetName);
@@ -28,6 +28,27 @@ function portfolioRowsAsObjectsV48_(sheetName) {
     });
     return out;
   }).filter(row => String(row['Activo'] || '').trim() !== '');
+}
+
+function genericRowsAsObjectsV50_(sheetName) {
+  const sh = SpreadsheetApp.getActive().getSheetByName(sheetName);
+  if (!sh || sh.getLastRow() < 2 || sh.getLastColumn() < 1) return [];
+
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0]
+    .map(h => String(h || '').trim());
+  const rows = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getValues();
+
+  return rows.map(row => {
+    const out = {};
+    let nonEmpty = false;
+    headers.forEach((header, idx) => {
+      if (!header) return;
+      const value = row[idx];
+      if (value !== '' && value !== null) nonEmpty = true;
+      out[header] = value instanceof Date ? value.toISOString() : value;
+    });
+    return nonEmpty ? out : null;
+  }).filter(Boolean);
 }
 
 function dailyBuyUsedUsdV48_() {
@@ -66,6 +87,9 @@ function buildPortfolioSyncPayloadV48_() {
     cartera_rows: portfolioRowsAsObjectsV48_('Cartera'),
     allocation_rows: portfolioRowsAsObjectsV48_('Asignación'),
     reconciliation_rows: portfolioRowsAsObjectsV48_('Conciliación histórica'),
+    wallet_rows: genericRowsAsObjectsV50_('Wallets'),
+    onchain_rows: genericRowsAsObjectsV50_('On-chain balances'),
+    onchain_reconciliation_rows: genericRowsAsObjectsV50_('Conciliacion on-chain'),
     daily_buy_used_usd: dailyBuyUsedUsdV48_(),
 
     // Deliberately unknown. The current v4.7 operation journal does not preserve

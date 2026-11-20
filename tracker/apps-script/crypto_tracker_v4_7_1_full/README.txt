@@ -17,3 +17,12 @@ Phase 8 / Front v5.0.0:
 - el panel Agent es read-only
 - si Agent no está disponible, la web sigue funcionando con los datos Tracker
 - las recomendaciones Tracker y Agent permanecen separadas hasta validación prospectiva
+
+
+Phase 8I–8P / Front v5.1.0:
+- Portfolio sync schema 1.1
+- Wallets, On-chain balances y Conciliacion on-chain se envian al Agent
+- direcciones publicas se muestran enmascaradas desde Agent
+- panel Wallets & On-chain prioriza Agent y conserva fallback Tracker
+- no se envian claves privadas ni seeds
+- no hay escritura automatica de saldos ni conciliacion

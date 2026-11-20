@@ -31,6 +31,7 @@ auditable para registrar futuros experimentos sin mezclarlos con 5G.
 | Phase 5AK–5AO — campaign launch guard | COMPLETE |
 | Phase 6 | BLOCKED |
 | Phase 8A–8H — web + Agent integration | COMPLETE |
+| Phase 8I–8P — wallet & portfolio productization | COMPLETE |
 
 `sample_ready=true` no es aprobación. Tampoco `PASS_RESEARCH` autoriza
 Testnet, órdenes o ejecución: Phase 6 exige una decisión humana separada.
@@ -129,6 +130,11 @@ portfolio, risk, exposure and safety state. Legacy Tracker recommendations remai
 visibly distinct from Agent recommendations; the Agent continues to expose
 research-only / non-authoritative recommendations until prospective validation
 passes.
+
+Phase 8I–8P extends the same integration to wallets and on-chain reconciliation.
+The Agent receives wallet/network/on-chain rows, masks public addresses in its
+dashboard response, reports freshness and reconciliation issues, and the web
+prefers the Agent view while retaining the Tracker fallback.
 
 ## Próximo paso
 

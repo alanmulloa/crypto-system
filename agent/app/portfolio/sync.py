@@ -21,6 +21,9 @@ class TrackerPortfolioExport(BaseModel):
     cartera_rows: list[dict[str, object]] = Field(default_factory=list)
     allocation_rows: list[dict[str, object]] = Field(default_factory=list)
     reconciliation_rows: list[dict[str, object]] = Field(default_factory=list)
+    wallet_rows: list[dict[str, object]] = Field(default_factory=list)
+    onchain_rows: list[dict[str, object]] = Field(default_factory=list)
+    onchain_reconciliation_rows: list[dict[str, object]] = Field(default_factory=list)
     daily_buy_used_usd: float = 0.0
     daily_realized_pnl_usd: float | None = None
 
