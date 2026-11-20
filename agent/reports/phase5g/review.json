@@ -1,11 +1,11 @@
 {
-  "as_of_ms": 1795120809127,
+  "as_of_ms": 1795159218764,
   "baseline": {
     "average_net_return_pct": 0.03576647421709511,
     "matured": 2,
     "median_net_return_pct": 0.03576647421709511,
-    "observations": 2,
-    "pending": 0,
+    "observations": 3,
+    "pending": 1,
     "positive_return_rate_pct": 50.0
   },
   "candidate": {
@@ -47,7 +47,7 @@
   },
   "reason": "No qualifying frozen-candidate observation has been recorded yet.",
   "sample_ready": false,
-  "source_created_at": "2026-11-19T20:40:28.245434+00:00",
+  "source_created_at": "2026-11-20T07:20:38.795856+00:00",
   "state": "WAITING_FOR_CANDIDATE_SIGNAL",
   "uplift_vs_baseline_pct_points": null
 }
