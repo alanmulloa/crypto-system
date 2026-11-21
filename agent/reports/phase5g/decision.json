@@ -1,5 +1,5 @@
 {
-  "as_of_ms": 1795245140134,
+  "as_of_ms": 1795288748146,
   "criteria": {
     "average_net_return_positive": null,
     "frozen_experiment_valid": true,
@@ -37,7 +37,7 @@
   "phase6_eligible": false,
   "reason": "Prospective sample is incomplete: 0 of 20 matured candidate observations.",
   "research_gate_passed": false,
-  "source_created_at": "2026-11-21T07:12:38.359209+00:00",
+  "source_created_at": "2026-11-21T19:19:34.871339+00:00",
   "thresholds": {
     "average_net_return_pct": "> 0",
     "median_net_return_pct": "> 0",
