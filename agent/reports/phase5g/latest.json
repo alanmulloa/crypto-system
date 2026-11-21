@@ -1,13 +1,13 @@
 {
-  "as_of_ms": 1795206282126,
+  "as_of_ms": 1795245140134,
   "baseline": {
-    "average_net_return_pct": 0.03576647421709511,
+    "average_net_return_pct": -1.6403033676495868,
     "cohort": "baseline",
-    "matured": 2,
-    "median_net_return_pct": 0.03576647421709511,
+    "matured": 3,
+    "median_net_return_pct": -0.3670786469662765,
     "observations": 3,
-    "pending": 1,
-    "positive_return_rate_pct": 50.0
+    "pending": 0,
+    "positive_return_rate_pct": 33.33333333333333
   },
   "candidate": {
     "description": "XRPUSDT Mean Reversion WATCH BUY with 1h volume ratio <= 0.75",
@@ -28,7 +28,7 @@
   },
   "frozen_at_ms": 1794348615195,
   "metadata": {
-    "created_at": "2026-11-20T20:25:02.782300+00:00",
+    "created_at": "2026-11-21T07:12:38.359209+00:00",
     "lookback_days_for_indicators": 90,
     "phase": "5G-prospective",
     "public_binance_only": true,
@@ -74,12 +74,12 @@
       "entry_market_price": 0.9539,
       "entry_timestamp_ms": 1795125600000,
       "feature_value": 1.278531651393728,
-      "gross_return_pct": null,
-      "net_return_pct": null,
-      "outcome_timestamp_ms": 1795212000000,
-      "positive_return": null,
+      "gross_return_pct": -4.706992347206196,
+      "net_return_pct": -4.992443051382951,
+      "outcome_timestamp_ms": 1795211999999,
+      "positive_return": false,
       "signal_timestamp_ms": 1795125599999,
-      "status": "PENDING",
+      "status": "MATURED",
       "symbol": "XRPUSDT"
     }
   ],
