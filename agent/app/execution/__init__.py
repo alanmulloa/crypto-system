@@ -1,4 +1,5 @@
 from app.execution.orchestrator import (
+    ExecutionIntentSide,
     InMemoryPaperExecutionRepository,
     NullPaperExecutionRepository,
     PaperExecutionIntent,
@@ -17,6 +18,7 @@ from app.execution.paper import (
 )
 
 __all__ = [
+    "ExecutionIntentSide",
     "InMemoryPaperExecutionRepository",
     "NullPaperExecutionRepository",
     "PaperAccount",

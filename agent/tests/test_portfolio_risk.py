@@ -1,5 +1,10 @@
 from app.config import Settings
-from app.portfolio import AllocationTarget, CapitalState, PortfolioPosition, PortfolioSnapshot
+from app.portfolio import (
+    AllocationTarget,
+    CapitalState,
+    PortfolioPosition,
+    PortfolioSnapshot,
+)
 from app.risk import RiskState, evaluate_portfolio_risk
 from app.strategies import AggregatedAssessment, HypothesisDirection, StrategyState
 
@@ -29,8 +34,12 @@ def portfolio(
 ):
     return PortfolioSnapshot(
         positions=(
-            PortfolioPosition("BTC", 0.02, btc_value, capital_state=CapitalState.PROFITS_ONLY),
-            PortfolioPosition("USDC", usdc_value, usdc_value, capital_state=CapitalState.CASH_RESERVE),
+            PortfolioPosition(
+                "BTC", 0.02, btc_value, capital_state=CapitalState.PROFITS_ONLY
+            ),
+            PortfolioPosition(
+                "USDC", usdc_value, usdc_value, capital_state=CapitalState.CASH_RESERVE
+            ),
         ),
         allocations=(AllocationTarget("BTC", 20, max_btc_pct, "Alta"),),
         daily_buy_used_usd=daily_buy_used,
@@ -74,7 +83,9 @@ def test_wait_never_approves_even_if_portfolio_has_capacity():
 
 
 def test_kill_switch_blocks_portfolio_risk():
-    result = evaluate_portfolio_risk(aggregate(), portfolio(), Settings(kill_switch=True))
+    result = evaluate_portfolio_risk(
+        aggregate(), portfolio(), Settings(kill_switch=True)
+    )
     assert result.approved is False
     assert "kill switch is active" in result.reasons
 
@@ -141,13 +152,39 @@ def test_daily_loss_limit_is_enforced():
     assert "daily loss limit reached" in result.reasons
 
 
-def test_sell_hypothesis_never_creates_short_or_execution():
+def test_sell_hypothesis_approves_when_position_exists():
+    """SELL hypothesis is approved for paper trading when there's a position to reduce."""
     settings = Settings(kill_switch=False)
     result = evaluate_portfolio_risk(
         aggregate(direction=HypothesisDirection.SELL),
-        portfolio(),
+        portfolio(),  # Has BTC position worth 1000 USD
+        settings,
+    )
+    assert result.state is RiskState.APPROVED
+    assert result.approved is True
+    assert result.max_notional_usd == 1000  # Position value
+
+
+def test_sell_hypothesis_rejected_when_no_position():
+    """SELL hypothesis is rejected (NO_ACTION) when there's no position to sell."""
+    settings = Settings(kill_switch=False)
+    # Portfolio with no BTC position
+    empty_portfolio = PortfolioSnapshot(
+        positions=(
+            PortfolioPosition(
+                "USDC", 5000, 5000, capital_state=CapitalState.CASH_RESERVE
+            ),
+        ),
+        allocations=(AllocationTarget("BTC", 20, 40, "Alta"),),
+        daily_buy_used_usd=0,
+        daily_realized_pnl_usd=0,
+    )
+    result = evaluate_portfolio_risk(
+        aggregate(direction=HypothesisDirection.SELL),
+        empty_portfolio,
         settings,
     )
     assert result.state is RiskState.NO_ACTION
     assert result.approved is False
     assert result.max_notional_usd == 0
+    assert "spot-only system cannot short an asset that is not held" in result.reasons

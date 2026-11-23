@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     portfolio_sync_max_age_minutes: int = 30
     portfolio_cash_asset: str = "USDC"
 
+    # Bot API token for /bot/* endpoints (read-only activity/performance)
+    # Defaults to portfolio_sync_token if not explicitly set
+    bot_api_token: str = ""
+
     paper_fee_bps: float = 10.0
     paper_slippage_bps: float = 5.0
     paper_loop_enabled: bool = False
@@ -45,4 +49,8 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    s = Settings()
+    # Allow bot API token to fall back to portfolio sync token for simplicity
+    if not s.bot_api_token and s.portfolio_sync_token:
+        s.bot_api_token = s.portfolio_sync_token
+    return s

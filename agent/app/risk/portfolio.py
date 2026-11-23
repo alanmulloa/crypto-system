@@ -70,14 +70,34 @@ def evaluate_portfolio_risk(
                 cash_before_usd=portfolio.cash_value_usd,
                 daily_buy_remaining_usd=max(settings.max_daily_buy_usd - portfolio.daily_buy_used_usd, 0.0),
             )
+        # Allow SELL/REDUCE for paper trading when we have a position to reduce
+        # The max notional is the current position value (can sell up to full position)
+        max_sell_notional = position.market_value_usd
+
+        # Apply risk checks for SELL (kill switch, position limits, etc.)
+        if settings.kill_switch:
+            reasons.append("kill switch is active")
+
+        # For SELL, we don't need cash reserve or daily buy limit checks
+        # but we should still respect max position constraints
+        allocation = portfolio.allocation_for(asset)
+        current_weight = portfolio.weight_pct(asset)
+        max_weight = allocation.max_weight_pct if allocation else None
+
+        approved = not reasons and assessment.state is StrategyState.WATCH
+        if not approved:
+            max_sell_notional = 0.0
+
         return PortfolioRiskDecision(
             symbol=assessment.symbol,
-            state=RiskState.NO_ACTION,
-            approved=False,
-            max_notional_usd=0.0,
-            reasons=("SELL is a reduce/exit hypothesis; Phase 3 does not execute disposals",),
-            current_asset_weight_pct=portfolio.weight_pct(asset),
+            state=RiskState.APPROVED if approved else RiskState.BLOCKED,
+            approved=approved,
+            max_notional_usd=max_sell_notional,
+            reasons=tuple(dict.fromkeys(reasons)),
+            current_asset_weight_pct=current_weight,
+            max_asset_weight_pct=max_weight,
             cash_before_usd=portfolio.cash_value_usd,
+            cash_after_min_usd=portfolio.cash_value_usd + max_sell_notional,
             daily_buy_remaining_usd=max(settings.max_daily_buy_usd - portfolio.daily_buy_used_usd, 0.0),
         )
 

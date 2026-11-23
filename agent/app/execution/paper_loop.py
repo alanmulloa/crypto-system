@@ -5,13 +5,18 @@ from datetime import datetime, timezone
 from typing import Protocol
 
 from app.config import Settings
-from app.execution.orchestrator import PaperExecutionIntent, PaperExecutionOrchestrator
+from app.execution.orchestrator import (
+    ExecutionIntentSide,
+    PaperExecutionIntent,
+    PaperExecutionOrchestrator,
+)
 from app.execution.paper import PaperBroker, PaperOrder, PaperOrderStatus
 from app.market.types import MarketCandidate
 from app.portfolio.models import CapitalState, LiquidityState, PortfolioPosition, PortfolioSnapshot
 from app.risk.portfolio import PortfolioRiskDecision, evaluate_portfolio_risk
 from app.strategies.aggregator import AggregatedAssessment, StrategyAggregator
 from app.strategies.engine import StrategyEngine
+from app.strategies.base import HypothesisDirection
 
 
 class CandidateSource(Protocol):
@@ -178,15 +183,30 @@ class PaperTradingLoop:
             order = None
 
             if risk.approved:
-                requested = min(
-                    self.settings.paper_default_order_usd,
-                    risk.max_notional_usd,
-                )
+                # Determine execution side from assessment direction
+                if aggregate.direction is HypothesisDirection.BUY:
+                    intent_side = ExecutionIntentSide.BUY
+                    requested = min(
+                        self.settings.paper_default_order_usd,
+                        risk.max_notional_usd,
+                    )
+                elif aggregate.direction is HypothesisDirection.SELL:
+                    intent_side = ExecutionIntentSide.SELL
+                    # For SELL, max_notional_usd is the position value
+                    requested = min(
+                        self.settings.paper_default_order_usd,
+                        risk.max_notional_usd,
+                    )
+                else:
+                    requested = 0.0
+                    intent_side = ExecutionIntentSide.BUY
+
                 if requested > 0:
                     order = self.orchestrator.execute(
                         intent=PaperExecutionIntent(
                             idempotency_key=f"paper-cycle:{cycle_id}:{candidate.symbol.upper()}",
                             symbol=candidate.symbol,
+                            side=intent_side,
                             requested_notional_usd=requested,
                         ),
                         risk=risk,

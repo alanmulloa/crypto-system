@@ -1,11 +1,13 @@
 from fastapi import APIRouter
 
 from app.api.portfolio_routes import router as portfolio_router
+from app.api.bot_routes import router as bot_router
 from app.config import get_settings
 
 
 router = APIRouter()
 router.include_router(portfolio_router)
+router.include_router(bot_router)
 
 
 @router.get("/health")

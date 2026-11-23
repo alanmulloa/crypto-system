@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.execution import (
+    ExecutionIntentSide,
     InMemoryPaperExecutionRepository,
     PaperBroker,
     PaperExecutionIntent,
@@ -31,7 +32,7 @@ def test_requires_explicit_risk_approval():
     orchestrator = PaperExecutionOrchestrator(broker)
     with pytest.raises(PermissionError):
         orchestrator.execute(
-            intent=PaperExecutionIntent("x", "BTCUSDT", 100),
+            intent=PaperExecutionIntent("x", "BTCUSDT", ExecutionIntentSide.BUY, 100),
             risk=risk(approved=False),
             market_price=100,
             now=NOW,
@@ -44,7 +45,7 @@ def test_authorized_notional_is_capped_by_risk_decision():
     repository = InMemoryPaperExecutionRepository()
     orchestrator = PaperExecutionOrchestrator(broker, repository)
     order = orchestrator.execute(
-        intent=PaperExecutionIntent("x", "BTCUSDT", 400),
+        intent=PaperExecutionIntent("x", "BTCUSDT", ExecutionIntentSide.BUY, 400),
         risk=risk(max_notional=250),
         market_price=100,
         now=NOW,
@@ -60,7 +61,7 @@ def test_risk_symbol_must_match_intent():
     orchestrator = PaperExecutionOrchestrator(broker)
     with pytest.raises(ValueError):
         orchestrator.execute(
-            intent=PaperExecutionIntent("x", "ETHUSDT", 100),
+            intent=PaperExecutionIntent("x", "ETHUSDT", ExecutionIntentSide.BUY, 100),
             risk=risk(symbol="BTCUSDT"),
             market_price=100,
             now=NOW,
@@ -71,7 +72,9 @@ def test_persisted_idempotency_prevents_restart_double_fill():
     repository = InMemoryPaperExecutionRepository()
     first_broker = PaperBroker(initial_cash_usd=1000, fee_bps=0, slippage_bps=0)
     first = PaperExecutionOrchestrator(first_broker, repository)
-    intent = PaperExecutionIntent("restart-safe", "BTCUSDT", 100)
+    intent = PaperExecutionIntent(
+        "restart-safe", "BTCUSDT", ExecutionIntentSide.BUY, 100
+    )
 
     original = first.execute(
         intent=intent,
@@ -99,14 +102,16 @@ def test_same_idempotency_key_with_changed_intent_is_rejected():
     broker = PaperBroker(initial_cash_usd=1000, fee_bps=0, slippage_bps=0)
     orchestrator = PaperExecutionOrchestrator(broker, repository)
     orchestrator.execute(
-        intent=PaperExecutionIntent("same", "BTCUSDT", 100),
+        intent=PaperExecutionIntent("same", "BTCUSDT", ExecutionIntentSide.BUY, 100),
         risk=risk(),
         market_price=100,
         now=NOW,
     )
     with pytest.raises(ValueError):
         orchestrator.execute(
-            intent=PaperExecutionIntent("same", "BTCUSDT", 200),
+            intent=PaperExecutionIntent(
+                "same", "BTCUSDT", ExecutionIntentSide.BUY, 200
+            ),
             risk=risk(),
             market_price=100,
             now=NOW,
@@ -121,6 +126,7 @@ def test_limit_intent_is_authorized_but_can_remain_open():
         intent=PaperExecutionIntent(
             "limit",
             "BTCUSDT",
+            ExecutionIntentSide.BUY,
             100,
             PaperOrderType.LIMIT,
             90,
