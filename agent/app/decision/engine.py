@@ -124,6 +124,7 @@ class DecisionEngine:
         candidate: MarketCandidate,
         portfolio: PortfolioSnapshot,
         cycle_id: str,
+        custody_sources: tuple[str, ...] | None = None,
     ) -> DecisionRecord:
         """Evaluate a single candidate and produce a decision record.
 
@@ -131,6 +132,7 @@ class DecisionEngine:
             candidate: Market candidate from scanner
             portfolio: Current portfolio snapshot
             cycle_id: Cycle identifier for journal grouping
+            custody_sources: Optional filter for portfolio queries (e.g., ("PAPER",) for paper trading)
 
         Returns:
             DecisionRecord with full decision context
@@ -144,14 +146,14 @@ class DecisionEngine:
         assessments = self.strategy_engine.evaluate(candidate)
         aggregate = self.aggregator.aggregate(assessments)
 
-        # Current position value
+        # Current position value (with optional custody filtering)
         from app.risk.portfolio import _base_asset
         asset = _base_asset(symbol)
-        position = portfolio.position_for(asset)
+        position = portfolio.position_for(asset, custody_sources=custody_sources)
         current_position_usd = position.market_value_usd if position else 0.0
 
-        # Evaluate portfolio risk
-        risk_decision = evaluate_portfolio_risk(aggregate, portfolio, self.settings)
+        # Evaluate portfolio risk (with optional custody filtering)
+        risk_decision = evaluate_portfolio_risk(aggregate, portfolio, self.settings, custody_sources=custody_sources)
 
         # Determine eligibility
         eligibility = evaluate_eligibility(
@@ -195,8 +197,8 @@ class DecisionEngine:
             constraints = SizingConstraints.from_market_context(
                 max_position_usd=self.settings.max_position_usd,
                 max_exposure_usd=self.settings.max_position_usd * 3,  # 3x position limit
-                cash_available_usd=portfolio.cash_value_usd,
-                portfolio_total_usd=portfolio.total_value_usd,
+                cash_available_usd=portfolio.cash_value_usd(custody_sources=custody_sources),
+                portfolio_total_usd=portfolio.total_value_usd(custody_sources=custody_sources),
                 daily_loss_limit_usd=self.settings.daily_loss_limit_usd,
                 volatility_score=volatility_score,
             )
@@ -266,6 +268,7 @@ class DecisionEngine:
         portfolio: PortfolioSnapshot,
         market_price: float,
         cycle_id: str,
+        custody_sources: tuple[str, ...] | None = None,
     ) -> PaperOrder | None:
         """Execute a paper trading decision.
 
@@ -274,6 +277,7 @@ class DecisionEngine:
             portfolio: Current portfolio (with paper overlay)
             market_price: Current market price
             cycle_id: Cycle identifier
+            custody_sources: Optional filter for portfolio queries (e.g., ("PAPER",) for paper trading)
 
         Returns:
             PaperOrder if executed, None otherwise
@@ -302,6 +306,7 @@ class DecisionEngine:
             ),
             portfolio,
             self.settings,
+            custody_sources=custody_sources,
         )
 
         # Re-evaluate eligibility with current risk decision
@@ -413,6 +418,7 @@ class DecisionEngine:
         candidates: list[MarketCandidate],
         portfolio: PortfolioSnapshot,
         cycle_id: str | None = None,
+        custody_sources: tuple[str, ...] | None = None,
     ) -> tuple[str, list[DecisionRecord]]:
         """Run a complete decision cycle for all candidates (evaluation only).
 
@@ -420,6 +426,7 @@ class DecisionEngine:
             candidates: List of market candidates from scanner
             portfolio: Current portfolio snapshot
             cycle_id: Optional cycle identifier (generated if not provided)
+            custody_sources: Optional filter for portfolio queries (e.g., ("PAPER",) for paper trading)
 
         Returns:
             Tuple of (cycle_id, list of decision records)
@@ -429,7 +436,7 @@ class DecisionEngine:
         decisions: list[DecisionRecord] = []
 
         for candidate in candidates:
-            record = self.evaluate_candidate(candidate, portfolio, cycle_id)
+            record = self.evaluate_candidate(candidate, portfolio, cycle_id, custody_sources=custody_sources)
             decisions.append(record)
 
             # Record to journal

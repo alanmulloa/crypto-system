@@ -123,12 +123,31 @@ class PaperTradingLoop:
         prices: dict[str, float],
         now: datetime,
     ) -> PortfolioSnapshot:
-        by_asset = {position.asset.upper(): position for position in base.positions}
-        cash_asset = base.cash_asset.upper()
+        """Create a portfolio snapshot with strict real/paper separation.
 
-        cash_position = by_asset.get(cash_asset)
-        if cash_position is None:
-            by_asset[cash_asset] = PortfolioPosition(
+        Real portfolio positions (from base) are preserved with custody_sources=("REAL",)
+        for risk context and allocation targets. Paper portfolio positions (from broker)
+        are tracked separately with custody_sources=("PAPER",) for execution decisions.
+        They are NEVER merged - quantities are not added together.
+        """
+        # Start with real portfolio positions - mark them explicitly as REAL custody
+        real_positions: list[PortfolioPosition] = []
+        for position in base.positions:
+            # Ensure real positions have explicit REAL custody source
+            if "REAL" not in position.custody_sources:
+                real_positions.append(
+                    replace(position, custody_sources=("REAL",) + tuple(s for s in position.custody_sources if s != "REAL"))
+                )
+            else:
+                real_positions.append(position)
+
+        # Build paper positions from broker account - separate from real
+        paper_positions: list[PortfolioPosition] = []
+
+        # Paper cash position
+        cash_asset = base.cash_asset.upper()
+        paper_positions.append(
+            PortfolioPosition(
                 asset=cash_asset,
                 quantity=self.broker.account.cash_usd,
                 market_value_usd=self.broker.account.cash_usd,
@@ -137,13 +156,9 @@ class PaperTradingLoop:
                 liquidity_state=LiquidityState.LIQUID,
                 liquidity_basis="paper_account",
             )
-        else:
-            by_asset[cash_asset] = replace(
-                cash_position,
-                quantity=self.broker.account.cash_usd,
-                market_value_usd=self.broker.account.cash_usd,
-            )
+        )
 
+        # Paper asset positions
         for symbol, paper_position in self.broker.account.positions.items():
             if paper_position.quantity <= 0:
                 continue
@@ -152,9 +167,8 @@ class PaperTradingLoop:
                 continue
             asset = _base_asset(symbol)
             paper_value = paper_position.quantity * price
-            current = by_asset.get(asset)
-            if current is None:
-                by_asset[asset] = PortfolioPosition(
+            paper_positions.append(
+                PortfolioPosition(
                     asset=asset,
                     quantity=paper_position.quantity,
                     market_value_usd=paper_value,
@@ -164,15 +178,14 @@ class PaperTradingLoop:
                     liquidity_state=LiquidityState.LIQUID,
                     liquidity_basis="paper_account",
                 )
-            else:
-                by_asset[asset] = replace(
-                    current,
-                    quantity=current.quantity + paper_position.quantity,
-                    market_value_usd=current.market_value_usd + paper_value,
-                )
+            )
+
+        # Combine: real positions (for risk context) + paper positions (for execution)
+        # They remain separate - no merging of quantities
+        all_positions = tuple(real_positions) + tuple(paper_positions)
 
         return PortfolioSnapshot(
-            positions=tuple(by_asset.values()),
+            positions=all_positions,
             allocations=base.allocations,
             cash_asset=base.cash_asset,
             daily_buy_used_usd=self.broker.daily_buy_used_usd(now),
@@ -198,11 +211,17 @@ class PaperTradingLoop:
 
         # Use DecisionEngine if available for enhanced decisions
         if self.decision_engine:
-            _, decisions = self.decision_engine.run_cycle(candidates, base, cycle_id=cycle_id)
+            # Create paper overlay portfolio once for this cycle
+            paper_portfolio = self._paper_overlay(base, prices, timestamp)
+            _, decisions = self.decision_engine.run_cycle(
+                candidates,
+                paper_portfolio,
+                cycle_id=cycle_id,
+                custody_sources=("PAPER",),  # Filter for paper trading context
+            )
 
             for record in decisions:
-                # Get current portfolio with paper overlay
-                current_portfolio = self._paper_overlay(base, prices, timestamp)
+                # Re-evaluate risk with paper overlay portfolio
                 risk = evaluate_portfolio_risk(
                     AggregatedAssessment(
                         symbol=record.symbol,
@@ -215,8 +234,9 @@ class PaperTradingLoop:
                         rejected_strategies=(),
                         reasons=(),
                     ),
-                    current_portfolio,
+                    paper_portfolio,
                     self.settings,
+                    custody_sources=("PAPER",),  # Filter for paper trading context
                 )
 
                 # If DecisionEngine has an entry plan that exceeds risk capacity, override risk to BLOCKED
@@ -245,7 +265,13 @@ class PaperTradingLoop:
                 if record.eligibility.value == "PAPER_PROPOSAL" and record.action != DecisionAction.NO_ACTION:
                     market_price = prices.get(record.symbol)
                     if market_price:
-                        order = self.decision_engine.execute_decision(record, current_portfolio, market_price, cycle_id)
+                        order = self.decision_engine.execute_decision(
+                            record,
+                            paper_portfolio,
+                            market_price,
+                            cycle_id,
+                            custody_sources=("PAPER",),
+                        )
 
                 items.append(
                     PaperCycleItem(
@@ -272,7 +298,12 @@ class PaperTradingLoop:
                 assessments = self.strategy_engine.evaluate(candidate)
                 aggregate = self.aggregator.aggregate(assessments)
                 current_portfolio = self._paper_overlay(base, prices, timestamp)
-                risk = evaluate_portfolio_risk(aggregate, current_portfolio, self.settings)
+                risk = evaluate_portfolio_risk(
+                    aggregate,
+                    current_portfolio,
+                    self.settings,
+                    custody_sources=("PAPER",),  # Filter for paper trading context
+                )
                 order = None
 
                 if risk.approved:

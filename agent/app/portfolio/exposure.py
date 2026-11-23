@@ -27,7 +27,7 @@ class PortfolioExposureReport:
 
 
 def analyze_exposure(snapshot: PortfolioSnapshot) -> PortfolioExposureReport:
-    total = snapshot.total_value_usd
+    total = snapshot.total_value_usd()
     custody_values: dict[str, float] = defaultdict(float)
     single_source_attributed = 0.0
     multi_source_unattributed = 0.0
