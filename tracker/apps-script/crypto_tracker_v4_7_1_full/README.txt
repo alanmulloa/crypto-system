@@ -26,3 +26,13 @@ Phase 8I–8P / Front v5.1.0:
 - panel Wallets & On-chain prioriza Agent y conserva fallback Tracker
 - no se envian claves privadas ni seeds
 - no hay escritura automatica de saldos ni conciliacion
+
+
+Phase 8Q–8X / Front v5.2.0:
+- panel Evolucion de cartera desde snapshots Agent
+- cambios de valor 24h / 7d / 30d
+- sparkline de snapshots recientes
+- los cambios de valor NO se presentan como rentabilidad ajustada por flujos
+- nuevo boton Sincronizar Agent
+- sincronizacion: Tracker -> Agent -> refresco de dashboard
+- no genera ordenes ni cambia research
