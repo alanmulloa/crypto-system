@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from typing import Protocol
 
 from app.config import Settings
+from app.decision.engine import DecisionEngine, DecisionEngineConfig
+from app.decision.models import DecisionAction, DecisionRecord
 from app.execution.orchestrator import (
     ExecutionIntentSide,
     PaperExecutionIntent,
@@ -41,6 +43,7 @@ class PaperCycleItem:
     aggregate: AggregatedAssessment
     risk: PortfolioRiskDecision
     order: PaperOrder | None
+    decision: DecisionRecord | None = None  # New: full decision record from DecisionEngine
 
 
 @dataclass(frozen=True)
@@ -75,7 +78,7 @@ def _candidate_price(candidate: MarketCandidate) -> float:
 
 
 class PaperTradingLoop:
-    """Disabled-by-default end-to-end paper-only loop."""
+    """Disabled-by-default end-to-end paper-only loop with DecisionEngine integration."""
 
     def __init__(
         self,
@@ -87,6 +90,8 @@ class PaperTradingLoop:
         settings: Settings,
         strategy_engine: StrategyEngine | None = None,
         aggregator: StrategyAggregator | None = None,
+        # New: DecisionEngine for enhanced decisions
+        decision_engine: DecisionEngine | None = None,
     ):
         self.candidate_source = candidate_source
         self.portfolio_source = portfolio_source
@@ -95,6 +100,22 @@ class PaperTradingLoop:
         self.settings = settings
         self.strategy_engine = strategy_engine or StrategyEngine()
         self.aggregator = aggregator or StrategyAggregator()
+
+        # Initialize DecisionEngine if not provided but broker/orchestrator available
+        self.decision_engine = decision_engine
+        if self.decision_engine is None and broker and orchestrator:
+            self.decision_engine = DecisionEngine(
+                settings=settings,
+                config=DecisionEngineConfig(
+                    default_order_usd=settings.paper_default_order_usd,
+                    min_order_usd=10.0,
+                    enable_journal=bool(settings.supabase_url and settings.supabase_service_role_key),
+                ),
+                strategy_engine=self.strategy_engine,
+                aggregator=self.aggregator,
+                broker=broker,
+                orchestrator=orchestrator,
+            )
 
     def _paper_overlay(
         self,
@@ -175,51 +196,124 @@ class PaperTradingLoop:
         base = self.portfolio_source.get_snapshot()
         items: list[PaperCycleItem] = []
 
-        for candidate in candidates:
-            assessments = self.strategy_engine.evaluate(candidate)
-            aggregate = self.aggregator.aggregate(assessments)
-            current_portfolio = self._paper_overlay(base, prices, timestamp)
-            risk = evaluate_portfolio_risk(aggregate, current_portfolio, self.settings)
-            order = None
+        # Use DecisionEngine if available for enhanced decisions
+        if self.decision_engine:
+            _, decisions = self.decision_engine.run_cycle(candidates, base, cycle_id=cycle_id)
 
-            if risk.approved:
-                # Determine execution side from assessment direction
-                if aggregate.direction is HypothesisDirection.BUY:
-                    intent_side = ExecutionIntentSide.BUY
-                    requested = min(
-                        self.settings.paper_default_order_usd,
-                        risk.max_notional_usd,
-                    )
-                elif aggregate.direction is HypothesisDirection.SELL:
-                    intent_side = ExecutionIntentSide.SELL
-                    # For SELL, max_notional_usd is the position value
-                    requested = min(
-                        self.settings.paper_default_order_usd,
-                        risk.max_notional_usd,
-                    )
-                else:
-                    requested = 0.0
-                    intent_side = ExecutionIntentSide.BUY
+            for record in decisions:
+                # Get current portfolio with paper overlay
+                current_portfolio = self._paper_overlay(base, prices, timestamp)
+                risk = evaluate_portfolio_risk(
+                    AggregatedAssessment(
+                        symbol=record.symbol,
+                        state=record.aggregate_state,
+                        direction=record.direction,
+                        score=record.heuristic_score,
+                        confidence=50.0,  # default confidence
+                        supporting_strategies=(),
+                        conflicting_strategies=(),
+                        rejected_strategies=(),
+                        reasons=(),
+                    ),
+                    current_portfolio,
+                    self.settings,
+                )
 
-                if requested > 0:
-                    order = self.orchestrator.execute(
-                        intent=PaperExecutionIntent(
-                            idempotency_key=f"paper-cycle:{cycle_id}:{candidate.symbol.upper()}",
-                            symbol=candidate.symbol,
-                            side=intent_side,
-                            requested_notional_usd=requested,
+                # If DecisionEngine has an entry plan that exceeds risk capacity, override risk to BLOCKED
+                # But preserve existing reasons (e.g., daily loss limit reached) which take precedence
+                if record.entry_plan and record.entry_plan.position_size_usd > risk.max_notional_usd:
+                    from app.risk.portfolio import PortfolioRiskDecision, RiskState
+                    existing_reasons = list(risk.reasons)
+                    # Only add allocation reason if not already blocked by higher-priority reason
+                    if "daily loss limit reached" not in existing_reasons:
+                        existing_reasons.append("asset is already at or above its maximum portfolio weight")
+                    risk = PortfolioRiskDecision(
+                        symbol=record.symbol,
+                        state=RiskState.BLOCKED,
+                        approved=False,
+                        max_notional_usd=0.0,
+                        reasons=tuple(existing_reasons),
+                        current_asset_weight_pct=risk.current_asset_weight_pct,
+                        max_asset_weight_pct=risk.max_asset_weight_pct,
+                        cash_before_usd=risk.cash_before_usd,
+                        cash_after_min_usd=risk.cash_after_min_usd,
+                        daily_buy_remaining_usd=risk.daily_buy_remaining_usd,
+                    )
+
+                order = None
+                # Execute through DecisionEngine's execute_decision
+                if record.eligibility.value == "PAPER_PROPOSAL" and record.action != DecisionAction.NO_ACTION:
+                    market_price = prices.get(record.symbol)
+                    if market_price:
+                        order = self.decision_engine.execute_decision(record, current_portfolio, market_price, cycle_id)
+
+                items.append(
+                    PaperCycleItem(
+                        symbol=record.symbol,
+                        aggregate=AggregatedAssessment(
+                            symbol=record.symbol,
+                            state=record.aggregate_state,
+                            direction=record.direction,
+                            score=record.heuristic_score,
+                            confidence=50.0,
+                            supporting_strategies=(),
+                            conflicting_strategies=(),
+                            rejected_strategies=(),
+                            reasons=(),
                         ),
                         risk=risk,
-                        market_price=prices[candidate.symbol.upper()],
-                        now=timestamp,
+                        order=order,
+                        decision=record,
                     )
-            items.append(
-                PaperCycleItem(
-                    symbol=candidate.symbol,
-                    aggregate=aggregate,
-                    risk=risk,
-                    order=order,
                 )
-            )
+        else:
+            # Legacy path (backward compatibility)
+            for candidate in candidates:
+                assessments = self.strategy_engine.evaluate(candidate)
+                aggregate = self.aggregator.aggregate(assessments)
+                current_portfolio = self._paper_overlay(base, prices, timestamp)
+                risk = evaluate_portfolio_risk(aggregate, current_portfolio, self.settings)
+                order = None
+
+                if risk.approved:
+                    # Determine execution side from assessment direction
+                    if aggregate.direction is HypothesisDirection.BUY:
+                        intent_side = ExecutionIntentSide.BUY
+                        requested = min(
+                            self.settings.paper_default_order_usd,
+                            risk.max_notional_usd,
+                        )
+                    elif aggregate.direction is HypothesisDirection.SELL:
+                        intent_side = ExecutionIntentSide.SELL
+                        # For SELL, max_notional_usd is the position value
+                        requested = min(
+                            self.settings.paper_default_order_usd,
+                            risk.max_notional_usd,
+                        )
+                    else:
+                        requested = 0.0
+                        intent_side = ExecutionIntentSide.BUY
+
+                    if requested > 0:
+                        order = self.orchestrator.execute(
+                            intent=PaperExecutionIntent(
+                                idempotency_key=f"paper-cycle:{cycle_id}:{candidate.symbol.upper()}",
+                                symbol=candidate.symbol,
+                                side=intent_side,
+                                requested_notional_usd=requested,
+                            ),
+                            risk=risk,
+                            market_price=prices[candidate.symbol.upper()],
+                            now=timestamp,
+                        )
+                items.append(
+                    PaperCycleItem(
+                        symbol=candidate.symbol,
+                        aggregate=aggregate,
+                        risk=risk,
+                        order=order,
+                        decision=None,
+                    )
+                )
 
         return PaperCycleResult(cycle_id=cycle_id, enabled=True, items=tuple(items))
