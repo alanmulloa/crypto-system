@@ -406,4 +406,14 @@
 - reconciliation issue model
 - unified Agent-first wallet panel with Tracker fallback
 - no wallet writes, keys, withdrawals or automatic execution
+
+### Phase 8Q–8X - Portfolio History & Control Center ✅
+- bounded historical portfolio snapshot API
+- 24h / 7d / 30d value-change windows
+- explicit separation between portfolio value change and flow-adjusted return
+- Apps Script history bridge
+- web portfolio evolution panel and sparkline
+- snapshot freshness visibility
+- one-click Tracker -> Agent synchronization
+- no automatic execution and Phase 6 remains blocked
 ## Phase 9 - Auto Limited

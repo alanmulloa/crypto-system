@@ -32,6 +32,7 @@ auditable para registrar futuros experimentos sin mezclarlos con 5G.
 | Phase 6 | BLOCKED |
 | Phase 8A–8H — web + Agent integration | COMPLETE |
 | Phase 8I–8P — wallet & portfolio productization | COMPLETE |
+| Phase 8Q–8X — portfolio history & control center | COMPLETE |
 
 `sample_ready=true` no es aprobación. Tampoco `PASS_RESEARCH` autoriza
 Testnet, órdenes o ejecución: Phase 6 exige una decisión humana separada.
@@ -135,6 +136,11 @@ Phase 8I–8P extends the same integration to wallets and on-chain reconciliatio
 The Agent receives wallet/network/on-chain rows, masks public addresses in its
 dashboard response, reports freshness and reconciliation issues, and the web
 prefers the Agent view while retaining the Tracker fallback.
+
+Phase 8Q–8X adds portfolio snapshot history, 24h/7d/30d value-change windows,
+an evolution sparkline and one-click Tracker -> Agent synchronization. Value
+changes are explicitly not presented as investment returns because the current
+snapshot history is not adjusted for cash flows.
 
 ## Próximo paso
 
