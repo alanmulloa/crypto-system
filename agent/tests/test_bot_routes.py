@@ -1,6 +1,5 @@
 """Tests for bot API routes (/bot/activity, /bot/paper-portfolio, /bot/performance)."""
-from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient

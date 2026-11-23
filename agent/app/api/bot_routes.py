@@ -297,8 +297,8 @@ def bot_paper_portfolio(
     # For now, query from paper execution orders/fills in Supabase
     client = _supabase_client(settings)
 
-    # Get all paper orders that are filled
-    orders = client.select(
+    # Get all paper orders that are filled (kept for potential future use)
+    _orders = client.select(
         "orders",
         columns="id,symbol,side,quantity,notional_usd,status,execution_price,execution_quantity,execution_fee_usd,created_at,raw",
         filters={"broker": "eq.PAPER", "status": "eq.FILLED"},
@@ -350,7 +350,7 @@ def bot_paper_portfolio(
 
     # Build response - NO current price proxy; return null with PRICE_UNAVAILABLE
     portfolio = []
-    total_unrealized = 0.0
+    _total_unrealized = 0.0
     total_realized = 0.0
 
     for symbol, pos in positions.items():
@@ -358,8 +358,8 @@ def bot_paper_portfolio(
             continue
         # We don't have a reliable current market price
         # Return null for price and unrealized PnL with status indicator
-        market_value = None
-        unrealized = None
+        _market_value = None
+        _unrealized = None
 
         total_realized += realized_pnl_by_symbol.get(symbol, 0.0)
 
