@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import hmac
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Query, status
 
 from app.config import get_settings
+from app.decision.journal import DecisionJournal
 
 
 router = APIRouter(prefix="/bot", tags=["bot"])
@@ -507,3 +509,116 @@ def bot_performance(
             "total_fees_usd": round(paper_fees, 2),
         },
     }
+
+
+@router.get("/decisions")
+def bot_decisions(
+    authorization: str | None = Header(default=None),
+    cycle_id: str | None = Query(default=None, description="Filter by cycle ID"),
+    symbol: str | None = Query(default=None, description="Filter by symbol"),
+    action: str | None = Query(default=None, description="Filter by action (BUY/SELL/REDUCE/NO_ACTION)"),
+    eligibility: str | None = Query(default=None, description="Filter by eligibility (RESEARCH_ONLY/BLOCKED/PAPER_PROPOSAL)"),
+    limit: int = Query(default=100, ge=1, le=500, description="Maximum number of decisions to return"),
+    since_hours: int | None = Query(default=None, ge=1, le=720, description="Filter to last N hours"),
+):
+    """Get decision journal entries with optional filters."""
+    settings = get_settings()
+    _require_auth(settings, authorization)
+
+    if not settings.supabase_url or not settings.supabase_service_role_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="bot API storage is not configured",
+        )
+
+    journal = DecisionJournal(settings)
+
+    decisions = journal.get_recent_decisions(
+        limit=limit,
+        symbol=symbol.upper() if symbol else None,
+        action=action,
+    )
+
+    # Apply additional filters
+    if cycle_id:
+        decisions = [d for d in decisions if d.cycle_id == cycle_id]
+    if eligibility:
+        decisions = [d for d in decisions if d.eligibility == eligibility]
+    if since_hours:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+        decisions = [d for d in decisions if d.timestamp >= cutoff]
+
+    # Apply limit after filtering
+    decisions = decisions[:limit]
+
+    # Include outcomes for each decision
+    result = []
+    for d in decisions:
+        entry = {
+            "decision_id": d.decision_id,
+            "cycle_id": d.cycle_id,
+            "timestamp": d.timestamp.isoformat(),
+            "symbol": d.symbol,
+            "action": d.action,
+            "eligibility": d.eligibility,
+            "confidence_score": d.confidence_score,
+            "heuristic_score": d.heuristic_score,
+            "risk_state": d.risk_state,
+            "aggregate_state": d.aggregate_state,
+            "direction": d.direction,
+            "max_notional_usd": d.max_notional_usd,
+        }
+        if d.entry_plan_json:
+            entry["entry_plan"] = json.loads(d.entry_plan_json)
+        if d.reasons_json:
+            entry["reasons"] = json.loads(d.reasons_json)
+        if d.warnings_json:
+            entry["warnings"] = json.loads(d.warnings_json)
+        if d.sizing_details_json:
+            entry["sizing_details"] = json.loads(d.sizing_details_json)
+
+        # Fetch outcomes
+        outcomes = journal.get_outcomes_for_decision(d.decision_id)
+        if outcomes:
+            entry["outcomes"] = [
+                {
+                    "order_id": o.order_id,
+                    "filled": o.filled,
+                    "fill_price": o.fill_price,
+                    "quantity": o.quantity,
+                    "notional": o.notional,
+                    "fees_usd": o.fees_usd,
+                    "slippage_usd": o.slippage_usd,
+                    "pnl_usd": o.pnl_usd,
+                    "timestamp": o.timestamp.isoformat(),
+                }
+                for o in outcomes
+            ]
+
+        result.append(entry)
+
+    return {
+        "total": len(result),
+        "decisions": result,
+    }
+
+
+@router.get("/decisions/stats")
+def bot_decisions_stats(
+    authorization: str | None = Header(default=None),
+    since_hours: int = Query(default=168, ge=1, le=720, description="Lookback period in hours (default 7 days)"),
+):
+    """Get aggregated decision journal statistics."""
+    settings = get_settings()
+    _require_auth(settings, authorization)
+
+    if not settings.supabase_url or not settings.supabase_service_role_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="bot API storage is not configured",
+        )
+
+    journal = DecisionJournal(settings)
+    stats = journal.get_performance_stats(since_hours=since_hours)
+
+    return stats
