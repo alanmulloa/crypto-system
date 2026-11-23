@@ -15,10 +15,20 @@ from app.execution.paper import (
 from app.risk.portfolio import PortfolioRiskDecision, RiskState
 
 
+from enum import Enum
+
+
+class ExecutionIntentSide(str, Enum):
+    BUY = "BUY"
+    SELL = "SELL"
+    REDUCE = "REDUCE"
+
+
 @dataclass(frozen=True)
 class PaperExecutionIntent:
     idempotency_key: str
     symbol: str
+    side: ExecutionIntentSide
     requested_notional_usd: float
     order_type: PaperOrderType = PaperOrderType.MARKET
     limit_price: float | None = None
@@ -33,6 +43,8 @@ class PaperExecutionIntent:
                 raise ValueError("LIMIT intent requires a positive limit_price")
         elif self.limit_price is not None:
             raise ValueError("limit_price is only valid for LIMIT intent")
+        if self.side is ExecutionIntentSide.REDUCE and self.order_type is PaperOrderType.LIMIT:
+            raise ValueError("REDUCE intent must use MARKET order type")
 
 
 class PaperExecutionRepository(Protocol):
@@ -66,8 +78,8 @@ class InMemoryPaperExecutionRepository:
 class PaperExecutionOrchestrator:
     """Risk-gated bridge into the deterministic PaperBroker.
 
-    The orchestrator only supports paper BUY intents in Phase 4B. It cannot bypass
-    PortfolioRiskDecision and it has no real broker/network integration.
+    Supports BUY, SELL, and REDUCE intents for paper trading.
+    Cannot bypass PortfolioRiskDecision and has no real broker/network integration.
     """
 
     def __init__(
@@ -90,6 +102,7 @@ class PaperExecutionOrchestrator:
         if existing is not None:
             if (
                 existing.request.symbol.upper() != intent.symbol.upper()
+                or existing.request.side.value != intent.side.value
                 or existing.request.notional_usd != min(intent.requested_notional_usd, risk.max_notional_usd)
                 or existing.request.order_type is not intent.order_type
                 or existing.request.limit_price != intent.limit_price
@@ -105,10 +118,18 @@ class PaperExecutionOrchestrator:
             raise PermissionError("approved risk decision has no notional capacity")
 
         authorized_notional = min(intent.requested_notional_usd, risk.max_notional_usd)
+
+        # Map execution intent side to paper broker side
+        paper_side = (
+            PaperSide.BUY
+            if intent.side is ExecutionIntentSide.BUY
+            else PaperSide.SELL
+        )
+
         request = PaperOrderRequest(
             idempotency_key=intent.idempotency_key,
             symbol=intent.symbol.upper(),
-            side=PaperSide.BUY,
+            side=paper_side,
             order_type=intent.order_type,
             notional_usd=authorized_notional,
             limit_price=intent.limit_price,
@@ -142,10 +163,15 @@ class PaperExecutionOrchestrator:
 def intent_time(intent: PaperExecutionIntent) -> datetime:
     # Kept separate for deterministic testing/injection by caller. PaperOrderRequest
     # itself supplies UTC now when the orchestrator caller does not pass a timestamp.
+    paper_side = (
+        PaperSide.BUY
+        if intent.side is ExecutionIntentSide.BUY
+        else PaperSide.SELL
+    )
     return PaperOrderRequest(
         idempotency_key=f"{intent.idempotency_key}:clock",
         symbol=intent.symbol,
-        side=PaperSide.BUY,
+        side=paper_side,
         order_type=PaperOrderType.MARKET,
         notional_usd=1.0,
     ).created_at

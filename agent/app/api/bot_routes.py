@@ -305,10 +305,10 @@ def bot_paper_portfolio(
         order="created_at.desc",
     )
 
-    # Get fills for realized PnL
+    # Get fills for realized PnL - symbol/side are in raw JSONB, not as columns
     fills = client.select(
         "fills",
-        columns="order_id,symbol,side,quantity,price,fee_usd,realized_pnl_usd,filled_at,raw",
+        columns="order_id,price,quantity,fee_usd,realized_pnl_usd,filled_at,raw",
     )
 
     # Build position map from fills
@@ -317,10 +317,12 @@ def bot_paper_portfolio(
     fees_by_symbol: dict[str, float] = {}
 
     for fill in fills:
-        symbol = fill.get("symbol", "").upper()
+        # Extract symbol and side from raw JSONB
+        raw = fill.get("raw") or {}
+        symbol = (raw.get("symbol") or "").upper()
         if not symbol:
             continue
-        side = fill.get("side")
+        side = raw.get("side") or "BUY"
         qty = float(fill.get("quantity") or 0)
         price = float(fill.get("price") or 0)
         fee = float(fill.get("fee_usd") or 0)
@@ -346,16 +348,7 @@ def bot_paper_portfolio(
         realized_pnl_by_symbol[symbol] = realized_pnl_by_symbol.get(symbol, 0.0) + realized
         fees_by_symbol[symbol] = fees_by_symbol.get(symbol, 0.0) + fee
 
-    # Get current market prices (from market_candidates or a price cache)
-    # For now, we'll use the last execution price from orders as a proxy
-    current_prices: dict[str, float] = {}
-    for order in orders:
-        if order.get("execution_price"):
-            sym = order.get("symbol", "").upper()
-            if sym and sym not in current_prices:
-                current_prices[sym] = float(order["execution_price"])
-
-    # Build response
+    # Build response - NO current price proxy; return null with PRICE_UNAVAILABLE
     portfolio = []
     total_unrealized = 0.0
     total_realized = 0.0
@@ -363,23 +356,23 @@ def bot_paper_portfolio(
     for symbol, pos in positions.items():
         if pos["quantity"] <= 0:
             continue
-        current_price = current_prices.get(symbol, pos["avg_cost"])
-        market_value = pos["quantity"] * current_price
-        unrealized = market_value - pos["total_cost"]
-        realized = realized_pnl_by_symbol.get(symbol, 0.0)
+        # We don't have a reliable current market price
+        # Return null for price and unrealized PnL with status indicator
+        market_value = None
+        unrealized = None
 
-        total_unrealized += unrealized
-        total_realized += realized
+        total_realized += realized_pnl_by_symbol.get(symbol, 0.0)
 
         portfolio.append({
             "symbol": symbol,
             "quantity": pos["quantity"],
             "avg_cost_usd": pos["avg_cost"],
-            "current_price_usd": current_price,
-            "market_value_usd": market_value,
-            "unrealized_pnl_usd": unrealized,
-            "realized_pnl_usd": realized,
-            "total_pnl_usd": unrealized + realized,
+            "current_price_usd": None,
+            "market_value_usd": None,
+            "unrealized_pnl_usd": None,
+            "unrealized_pnl_status": "PRICE_UNAVAILABLE",
+            "realized_pnl_usd": realized_pnl_by_symbol.get(symbol, 0.0),
+            "total_pnl_usd": None,  # Can't compute without current price
             "fees_usd": fees_by_symbol.get(symbol, 0.0),
         })
 
@@ -389,9 +382,10 @@ def bot_paper_portfolio(
     return {
         "positions": portfolio,
         "summary": {
-            "total_unrealized_pnl_usd": total_unrealized,
-            "total_realized_pnl_usd": total_realized,
-            "total_pnl_usd": total_unrealized + total_realized,
+            "total_unrealized_pnl_usd": None,
+            "total_unrealized_pnl_status": "PRICE_UNAVAILABLE",
+            "total_realized_pnl_usd": round(total_realized, 2),
+            "total_pnl_usd": None,
             "position_count": len(portfolio),
         },
     }
@@ -410,40 +404,45 @@ def bot_performance(
 
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
-    # Get trades in period
+    # Get trades in period (real trading round-trips)
     trades = client.select(
         "trades",
-        columns="id,symbol,strategy,opened_at,closed_at,entry_price,exit_price,quantity,pnl_usd,pnl_pct,realized_pnl_usd,market_regime",
+        columns="id,symbol,strategy,opened_at,closed_at,entry_price,exit_price,quantity,pnl_usd,pnl_pct,realized_pnl_usd,market_regime,metadata",
         filters={"closed_at": f"gte.{cutoff}"},
         order="closed_at.desc",
     )
 
-    # Get fills in period for paper trading PnL
+    # Get fills in period for PAPER TRADING ONLY
+    # (fills for real trading are part of trades, so we filter by broker=PAPER)
     fills = client.select(
         "fills",
-        columns="order_id,symbol,side,quantity,price,fee_usd,realized_pnl_usd,filled_at,raw",
+        columns="order_id,price,quantity,fee_usd,realized_pnl_usd,filled_at,raw",
         filters={"filled_at": f"gte.{cutoff}"},
     )
 
-    # Calculate metrics
-    total_trades = len(trades)
-    winning_trades = sum(1 for t in trades if float(t.get("pnl_usd") or 0) > 0)
-    losing_trades = sum(1 for t in trades if float(t.get("pnl_usd") or 0) < 0)
-    total_pnl = sum(float(t.get("pnl_usd") or 0) for t in trades)
-    total_fees = sum(float(t.get("fee_usd") or 0) for t in trades)  # trades don't have fee_usd directly
+    # Filter fills to only paper trading (broker in raw)
+    paper_fills = [f for f in fills if (f.get("raw") or {}).get("broker") == "PAPER"]
 
-    # Add paper trading PnL from fills
-    paper_pnl = sum(float(f.get("realized_pnl_usd") or 0) for f in fills)
-    paper_fees = sum(float(f.get("fee_usd") or 0) for f in fills)
+    # Calculate metrics for REAL TRADING (from trades)
+    real_trades = [t for t in trades if (t.get("metadata") or {}).get("broker") != "PAPER"]
+    total_trades = len(real_trades)
+    winning_trades = sum(1 for t in real_trades if float(t.get("pnl_usd") or 0) > 0)
+    losing_trades = sum(1 for t in real_trades if float(t.get("pnl_usd") or 0) < 0)
+    real_pnl = sum(float(t.get("pnl_usd") or 0) for t in real_trades)
 
-    total_pnl += paper_pnl
-    total_fees += paper_fees
+    # Paper trading PnL from fills (not double-counted with trades)
+    paper_pnl = sum(float(f.get("realized_pnl_usd") or 0) for f in paper_fills)
+    paper_fees = sum(float(f.get("fee_usd") or 0) for f in paper_fills)
+
+    # Total PnL = real trades PnL + paper fills PnL (NO double counting)
+    total_pnl = real_pnl + paper_pnl
+    total_fees = paper_fees  # real trades fees are embedded in pnl_usd
 
     win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0.0
 
-    # Group by strategy
+    # Group by strategy (real trades only)
     by_strategy: dict[str, dict[str, Any]] = {}
-    for trade in trades:
+    for trade in real_trades:
         strat = trade.get("strategy") or "unknown"
         if strat not in by_strategy:
             by_strategy[strat] = {"trades": 0, "wins": 0, "pnl_usd": 0.0}
@@ -453,9 +452,9 @@ def bot_performance(
         if pnl > 0:
             by_strategy[strat]["wins"] += 1
 
-    # Group by symbol
+    # Group by symbol (real trades only)
     by_symbol: dict[str, dict[str, Any]] = {}
-    for trade in trades:
+    for trade in real_trades:
         sym = trade.get("symbol", "unknown")
         if sym not in by_symbol:
             by_symbol[sym] = {"trades": 0, "pnl_usd": 0.0}
@@ -464,10 +463,12 @@ def bot_performance(
 
     # Paper trading breakdown
     paper_by_symbol: dict[str, dict[str, Any]] = {}
-    for fill in fills:
+    for fill in paper_fills:
         if float(fill.get("realized_pnl_usd") or 0) == 0:
             continue
-        sym = fill.get("symbol", "unknown")
+        # Extract symbol from raw
+        raw = fill.get("raw") or {}
+        sym = (raw.get("symbol") or "unknown").upper()
         if sym not in paper_by_symbol:
             paper_by_symbol[sym] = {"trades": 0, "pnl_usd": 0.0}
         paper_by_symbol[sym]["trades"] += 1
