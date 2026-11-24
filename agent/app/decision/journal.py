@@ -50,6 +50,27 @@ class DecisionJournal:
             content = response.read().decode("utf-8")
             return json.loads(content) if content else None
 
+    def _decision_id_hash(self, cycle_id: str, record: DecisionRecord) -> str:
+        """Generate deterministic hash for decision_id based on record content.
+
+        Uses SHA-1 of the record's essential fields to ensure:
+        - Same logical decision always produces same decision_id (idempotent)
+        - Different actions/symbols/eligibility produce different IDs
+        - Timestamp-independent for retry/restart scenarios
+        """
+        import hashlib
+
+        # Create a deterministic snapshot of the record's identity
+        # Fields that define the logical decision (not timestamp-dependent)
+        hash_input = f"{cycle_id}:{record.symbol}:{record.action.value}:{record.eligibility.value}:{record.confidence_score}:{record.heuristic_score}:{record.max_notional_usd}"
+        if record.entry_plan:
+            hash_input += f":{record.entry_plan.side.value}:{record.entry_plan.symbol}:{record.entry_plan.entry_price}"
+        if record.sizing_details_json:
+            hash_input += f":{record.sizing_details_json}"
+
+        return hashlib.sha1(hash_input.encode("utf-8")).hexdigest()[:16]
+
+
     def record_decision(self, record: DecisionRecord, cycle_id: str) -> str:
         """Record a decision with idempotency (dedup by decision_id).
 
@@ -60,7 +81,7 @@ class DecisionJournal:
         Returns:
             decision_id (generated or existing)
         """
-        decision_id = f"dec_{cycle_id}_{record.symbol}_{int(datetime.now(timezone.utc).timestamp())}"
+        decision_id = f"dec_{cycle_id}_{record.symbol}_{self._decision_id_hash(cycle_id, record)}"
 
         entry = DecisionJournalEntry(
             decision_id=decision_id,
@@ -239,8 +260,28 @@ class InMemoryDecisionJournal:
         self.decisions: dict[str, DecisionJournalEntry] = {}
         self.outcomes: dict[str, list[DecisionOutcome]] = {}
 
+    def _decision_id_hash(self, cycle_id: str, record: DecisionRecord) -> str:
+        """Generate deterministic hash for decision_id based on record content.
+
+        Uses SHA-1 of the record's essential fields to ensure:
+        - Same logical decision always produces same decision_id (idempotent)
+        - Different actions/symbols/eligibility produce different IDs
+        - Timestamp-independent for retry/restart scenarios
+        """
+        import hashlib
+
+        # Create a deterministic snapshot of the record's identity
+        # Fields that define the logical decision (not timestamp-dependent)
+        hash_input = f"{cycle_id}:{record.symbol}:{record.action.value}:{record.eligibility.value}:{record.confidence_score}:{record.heuristic_score}:{record.max_notional_usd}"
+        if record.entry_plan:
+            hash_input += f":{record.entry_plan.side.value}:{record.entry_plan.symbol}:{record.entry_plan.entry_price}"
+        if record.sizing_details_json:
+            hash_input += f":{record.sizing_details_json}"
+
+        return hashlib.sha1(hash_input.encode("utf-8")).hexdigest()[:16]
+
     def record_decision(self, record: DecisionRecord, cycle_id: str) -> str:
-        decision_id = f"dec_{cycle_id}_{record.symbol}_{int(datetime.now(timezone.utc).timestamp())}"
+        decision_id = f"dec_{cycle_id}_{record.symbol}_{self._decision_id_hash(cycle_id, record)}"
         if decision_id in self.decisions:
             return decision_id
 
@@ -268,7 +309,10 @@ class InMemoryDecisionJournal:
     def record_outcome(self, outcome: DecisionOutcome) -> None:
         if outcome.decision_id not in self.outcomes:
             self.outcomes[outcome.decision_id] = []
-        self.outcomes[outcome.decision_id].append(outcome)
+        # Idempotent: check if same outcome (by order_id) already exists
+        existing_order_ids = {o.order_id for o in self.outcomes[outcome.decision_id]}
+        if outcome.order_id not in existing_order_ids:
+            self.outcomes[outcome.decision_id].append(outcome)
 
     def get_decision(self, decision_id: str) -> DecisionJournalEntry | None:
         return self.decisions.get(decision_id)
