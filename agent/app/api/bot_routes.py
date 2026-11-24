@@ -622,3 +622,128 @@ def bot_decisions_stats(
     stats = journal.get_performance_stats(since_hours=since_hours)
 
     return stats
+
+@router.get("/performance/enhanced")
+def bot_performance_enhanced(
+    authorization: str | None = Header(default=None),
+    days: int = Query(default=30, ge=1, le=365, description="Lookback period in days"),
+):
+    """Get enhanced bot performance metrics with paper trading analytics.
+
+    This endpoint provides:
+    - Paper trading metrics (expectancy, profit factor, max drawdown)
+    - Real trading PnL summary
+    - Combined overview
+    """
+    from app.evaluation.paper_performance import (
+        PaperTradeRecord,
+        calculate_paper_metrics,
+    )
+
+    settings = get_settings()
+    _require_auth(settings, authorization)
+
+    client = _supabase_client(settings)
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    # Get trades in period (both real and paper)
+    trades = client.select(
+        "trades",
+        columns="id,symbol,strategy,opened_at,closed_at,entry_price,exit_price,quantity,pnl_usd,pnl_pct,realized_pnl_usd,market_regime,metadata",
+        filters={"closed_at": f"gte.{cutoff}"},
+        order="closed_at.desc",
+    )
+
+    # Get fills in period for PAPER TRADING ONLY
+    fills = client.select(
+        "fills",
+        columns="order_id,price,quantity,fee_usd,realized_pnl_usd,filled_at,raw",
+        filters={"filled_at": f"gte.{cutoff}"},
+    )
+
+    # Filter fills to only paper trading
+    paper_fills = [f for f in fills if (f.get("raw") or {}).get("broker") == "PAPER"]
+
+    # Convert paper fills to PaperTradeRecord for performance calculation
+    # Note: We need closed trades (SELL fills that close positions)
+    # For now, we'll calculate based on fills that have realized PnL
+    paper_trade_records = []
+    for fill in paper_fills:
+        raw = fill.get("raw") or {}
+        symbol = (raw.get("symbol") or "unknown").upper()
+        side = raw.get("side") or "BUY"
+
+        # Only SELL fills represent closed trades with realized PnL
+        if side == "SELL" and float(fill.get("realized_pnl_usd") or 0) != 0:
+            paper_trade_records.append(
+                PaperTradeRecord(
+                    symbol=symbol,
+                    strategy=raw.get("strategy") or "unknown",
+                    opened_at=datetime.fromisoformat(raw.get("opened_at", fill.get("filled_at", cutoff))),
+                    closed_at=datetime.fromisoformat(fill.get("filled_at", cutoff)),
+                    entry_price=float(raw.get("entry_price") or 0),
+                    exit_price=float(fill.get("price") or 0),
+                    quantity=float(fill.get("quantity") or 0),
+                    pnl_usd=float(fill.get("realized_pnl_usd") or 0),
+                    pnl_pct=float(raw.get("pnl_pct") or 0),
+                    fees_usd=float(fill.get("fee_usd") or 0),
+                    slippage_usd=float(raw.get("slippage_usd") or 0),
+                )
+            )
+
+    # Calculate paper trading metrics
+    paper_metrics = calculate_paper_metrics(paper_trade_records) if paper_trade_records else None
+
+    # Calculate metrics for REAL TRADING (from trades)
+    real_trades = [t for t in trades if (t.get("metadata") or {}).get("broker") != "PAPER"]
+    total_real_trades = len(real_trades)
+    winning_real = sum(1 for t in real_trades if float(t.get("pnl_usd") or 0) > 0)
+    losing_real = sum(1 for t in real_trades if float(t.get("pnl_usd") or 0) < 0)
+    real_pnl = sum(float(t.get("pnl_usd") or 0) for t in real_trades)
+    real_win_rate = (winning_real / total_real_trades * 100) if total_real_trades > 0 else 0.0
+
+    # Paper trading PnL from fills
+    paper_pnl = sum(float(f.get("realized_pnl_usd") or 0) for f in paper_fills)
+    paper_fees = sum(float(f.get("fee_usd") or 0) for f in paper_fills)
+
+    # Total metrics
+    total_trades = total_real_trades + (paper_metrics.total_trades if paper_metrics else 0)
+    total_pnl = real_pnl + paper_pnl
+    total_fees = paper_fees
+
+    return {
+        "period_days": days,
+        "real_trading": {
+            "total_trades": total_real_trades,
+            "winning_trades": winning_real,
+            "losing_trades": losing_real,
+            "win_rate_pct": round(real_win_rate, 2),
+            "total_pnl_usd": round(real_pnl, 2),
+        },
+        "paper_trading": {
+            "total_trades": paper_metrics.total_trades if paper_metrics else 0,
+            "winning_trades": paper_metrics.winning_trades if paper_metrics else 0,
+            "losing_trades": paper_metrics.losing_trades if paper_metrics else 0,
+            "win_rate_pct": paper_metrics.win_rate_pct if paper_metrics else 0.0,
+            "total_pnl_usd": paper_metrics.total_pnl_usd if paper_metrics else 0.0,
+            "total_fees_usd": paper_metrics.total_fees_usd if paper_metrics else 0.0,
+            "total_slippage_usd": paper_metrics.total_slippage_usd if paper_metrics else 0.0,
+            "net_pnl_usd": paper_metrics.net_pnl_usd if paper_metrics else 0.0,
+            "profit_factor": paper_metrics.profit_factor if paper_metrics else 0.0,
+            "expectancy_usd": paper_metrics.expectancy_usd if paper_metrics else 0.0,
+            "max_drawdown_usd": paper_metrics.max_drawdown_usd if paper_metrics else 0.0,
+            "max_drawdown_pct": paper_metrics.max_drawdown_pct if paper_metrics else 0.0,
+            "avg_win_usd": paper_metrics.avg_win_usd if paper_metrics else 0.0,
+            "avg_loss_usd": paper_metrics.avg_loss_usd if paper_metrics else 0.0,
+            "avg_trade_usd": paper_metrics.avg_trade_usd if paper_metrics else 0.0,
+            "by_symbol": paper_metrics.by_symbol if paper_metrics else {},
+            "by_strategy": paper_metrics.by_strategy if paper_metrics else {},
+        },
+        "summary": {
+            "total_trades": total_trades,
+            "total_pnl_usd": round(total_pnl, 2),
+            "total_fees_usd": round(total_fees, 2),
+            "net_pnl_usd": round(total_pnl - total_fees, 2),
+        },
+    }
