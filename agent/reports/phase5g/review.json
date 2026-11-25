@@ -1,12 +1,12 @@
 {
-  "as_of_ms": 1795595968272,
+  "as_of_ms": 1795643060194,
   "baseline": {
-    "average_net_return_pct": -1.6403033676495868,
-    "matured": 3,
-    "median_net_return_pct": -0.3670786469662765,
+    "average_net_return_pct": -1.4254866796467516,
+    "matured": 4,
+    "median_net_return_pct": -0.5740576313022608,
     "observations": 4,
-    "pending": 1,
-    "positive_return_rate_pct": 33.33333333333333
+    "pending": 0,
+    "positive_return_rate_pct": 25.0
   },
   "candidate": {
     "average_net_return_pct": null,
@@ -47,7 +47,7 @@
   },
   "reason": "No qualifying frozen-candidate observation has been recorded yet.",
   "sample_ready": false,
-  "source_created_at": "2026-11-25T08:39:59.469488+00:00",
+  "source_created_at": "2026-11-25T21:44:42.369749+00:00",
   "state": "WAITING_FOR_CANDIDATE_SIGNAL",
   "uplift_vs_baseline_pct_points": null
 }
