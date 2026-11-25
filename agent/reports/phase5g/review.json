@@ -1,5 +1,5 @@
 {
-  "as_of_ms": 1795559342616,
+  "as_of_ms": 1795595968272,
   "baseline": {
     "average_net_return_pct": -1.6403033676495868,
     "matured": 3,
@@ -47,7 +47,7 @@
   },
   "reason": "No qualifying frozen-candidate observation has been recorded yet.",
   "sample_ready": false,
-  "source_created_at": "2026-11-24T22:29:29.317956+00:00",
+  "source_created_at": "2026-11-25T08:39:59.469488+00:00",
   "state": "WAITING_FOR_CANDIDATE_SIGNAL",
   "uplift_vs_baseline_pct_points": null
 }
