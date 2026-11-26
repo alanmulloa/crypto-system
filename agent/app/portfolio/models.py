@@ -74,36 +74,48 @@ class PortfolioSnapshot:
         if self.daily_buy_used_usd < 0:
             raise ValueError("daily_buy_used_usd cannot be negative")
 
-    @property
-    def total_value_usd(self) -> float:
-        return sum(position.market_value_usd for position in self.positions)
+    def total_value_usd(self, custody_sources: tuple[str, ...] | None = None) -> float:
+        """Calculate total portfolio value, optionally filtering by custody source."""
+        return sum(
+            position.market_value_usd
+            for position in self.positions
+            if custody_sources is None or any(s in position.custody_sources for s in custody_sources)
+        )
 
-    @property
-    def cash_value_usd(self) -> float:
+    def cash_value_usd(self, custody_sources: tuple[str, ...] | None = None) -> float:
+        """Calculate cash value, optionally filtering by custody source."""
         cash = self.cash_asset.upper()
         return sum(
             position.market_value_usd
             for position in self.positions
             if position.asset.upper() == cash
+            and (custody_sources is None or any(s in position.custody_sources for s in custody_sources))
         )
 
-    @property
-    def open_positions(self) -> int:
+    def open_positions(self, custody_sources: tuple[str, ...] | None = None) -> int:
+        """Count open positions, optionally filtering by custody source."""
         cash = self.cash_asset.upper()
         return sum(
             position.market_value_usd > 0
             for position in self.positions
             if position.asset.upper() != cash
+            and (custody_sources is None or any(s in position.custody_sources for s in custody_sources))
         )
 
     @property
     def daily_loss_guard_available(self) -> bool:
         return self.daily_realized_pnl_usd is not None
 
-    def position_for(self, asset: str) -> PortfolioPosition | None:
+    def position_for(self, asset: str, custody_sources: tuple[str, ...] | None = None) -> PortfolioPosition | None:
+        """Find position for asset, optionally filtering by custody source."""
         needle = asset.upper()
         return next(
-            (position for position in self.positions if position.asset.upper() == needle),
+            (
+                position
+                for position in self.positions
+                if position.asset.upper() == needle
+                and (custody_sources is None or any(s in position.custody_sources for s in custody_sources))
+            ),
             None,
         )
 
@@ -114,11 +126,18 @@ class PortfolioSnapshot:
             None,
         )
 
-    def weight_pct(self, asset: str) -> float:
-        total = self.total_value_usd
+    def weight_pct(self, asset: str, *, custody_sources: tuple[str, ...] | None = None) -> float:
+        """Calculate asset weight percentage, optionally filtering by custody source.
+
+        Args:
+            asset: Asset symbol
+            custody_sources: If provided, only include positions with matching custody sources.
+                           Use ("REAL",) for risk context, ("PAPER",) for execution tracking.
+        """
+        total = self.total_value_usd(custody_sources=custody_sources)
         if total <= 0:
             return 0.0
-        position = self.position_for(asset)
+        position = self.position_for(asset, custody_sources=custody_sources)
         return (position.market_value_usd / total * 100.0) if position else 0.0
 
     @property

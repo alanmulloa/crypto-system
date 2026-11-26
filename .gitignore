@@ -7,3 +7,6 @@ __pycache__/
 .DS_Store
 coverage.xml
 htmlcov/
+
+# Local Python CI environment
+agent/.venv-ci/

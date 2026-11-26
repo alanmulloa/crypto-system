@@ -8,7 +8,11 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from app.portfolio.models import PortfolioSnapshot
-from app.portfolio.sync import PortfolioSyncRepository, SyncMetadata, TrackerPortfolioExport
+from app.portfolio.sync import (
+    PortfolioSyncRepository,
+    SyncMetadata,
+    TrackerPortfolioExport,
+)
 
 
 class InMemoryPortfolioSyncRepository(PortfolioSyncRepository):
@@ -16,11 +20,7 @@ class InMemoryPortfolioSyncRepository(PortfolioSyncRepository):
         self.records: list[tuple[TrackerPortfolioExport, PortfolioSnapshot, str]] = []
 
     def latest_metadata(self, source_id: str) -> SyncMetadata | None:
-        matches = [
-            item
-            for item in self.records
-            if item[0].source_id == source_id
-        ]
+        matches = [item for item in self.records if item[0].source_id == source_id]
         if not matches:
             return None
         export, _, content_hash = max(matches, key=lambda item: item[0].generated_at)
@@ -35,31 +35,23 @@ class InMemoryPortfolioSyncRepository(PortfolioSyncRepository):
         self.records.append((export, snapshot, content_hash))
 
     def latest_export(self, source_id: str) -> TrackerPortfolioExport | None:
-        matches = [
-            item
-            for item in self.records
-            if item[0].source_id == source_id
-        ]
+        matches = [item for item in self.records if item[0].source_id == source_id]
         if not matches:
             return None
         export, _, _ = max(matches, key=lambda item: item[0].generated_at)
         return export
 
     def recent_summaries(self, source_id: str, limit: int = 90) -> list[dict[str, Any]]:
-        matches = [
-            item
-            for item in self.records
-            if item[0].source_id == source_id
-        ]
+        matches = [item for item in self.records if item[0].source_id == source_id]
         matches.sort(key=lambda item: item[0].generated_at)
         rows = []
-        for export, snapshot, content_hash in matches[-max(1, limit):]:
+        for export, snapshot, content_hash in matches[-max(1, limit) :]:
             rows.append(
                 {
                     "generated_at": export.generated_at.isoformat(),
                     "content_hash": content_hash,
-                    "total_value_usd": snapshot.total_value_usd,
-                    "cash_value_usd": snapshot.cash_value_usd,
+                    "total_value_usd": snapshot.total_value_usd(),
+                    "cash_value_usd": snapshot.cash_value_usd(),
                     "capital_at_risk_usd": snapshot.capital_at_risk_usd,
                 }
             )
@@ -102,7 +94,9 @@ class SupabasePortfolioSyncRepository(PortfolioSyncRepository):
             return None
         return SyncMetadata(
             content_hash=str(rows[0]["content_hash"]),
-            generated_at=datetime.fromisoformat(str(rows[0]["generated_at"]).replace("Z", "+00:00")),
+            generated_at=datetime.fromisoformat(
+                str(rows[0]["generated_at"]).replace("Z", "+00:00")
+            ),
         )
 
     def latest_export(self, source_id: str) -> TrackerPortfolioExport | None:
@@ -160,15 +154,17 @@ class SupabasePortfolioSyncRepository(PortfolioSyncRepository):
             "source_revision": export.source_revision,
             "content_hash": content_hash,
             "generated_at": export.generated_at.isoformat(),
-            "total_value_usd": snapshot.total_value_usd,
-            "cash_value_usd": snapshot.cash_value_usd,
+            "total_value_usd": snapshot.total_value_usd(),
+            "cash_value_usd": snapshot.cash_value_usd(),
             "capital_at_risk_usd": snapshot.capital_at_risk_usd,
             "snapshot": asdict(snapshot),
             "raw_payload": export.model_dump(mode="json"),
         }
         request = Request(
             f"{self.url}/rest/v1/portfolio_syncs",
-            data=json.dumps(payload, default=lambda value: getattr(value, "value", str(value))).encode("utf-8"),
+            data=json.dumps(
+                payload, default=lambda value: getattr(value, "value", str(value))
+            ).encode("utf-8"),
             headers={**self._headers, "Prefer": "return=minimal"},
             method="POST",
         )

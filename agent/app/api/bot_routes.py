@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import hmac
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Query, status
 
 from app.config import get_settings
+from app.decision.journal import DecisionJournal
 
 
 router = APIRouter(prefix="/bot", tags=["bot"])
@@ -505,5 +507,243 @@ def bot_performance(
             },
             "total_pnl_usd": round(paper_pnl, 2),
             "total_fees_usd": round(paper_fees, 2),
+        },
+    }
+
+
+@router.get("/decisions")
+def bot_decisions(
+    authorization: str | None = Header(default=None),
+    cycle_id: str | None = Query(default=None, description="Filter by cycle ID"),
+    symbol: str | None = Query(default=None, description="Filter by symbol"),
+    action: str | None = Query(default=None, description="Filter by action (BUY/SELL/REDUCE/NO_ACTION)"),
+    eligibility: str | None = Query(default=None, description="Filter by eligibility (RESEARCH_ONLY/BLOCKED/PAPER_PROPOSAL)"),
+    limit: int = Query(default=100, ge=1, le=500, description="Maximum number of decisions to return"),
+    since_hours: int | None = Query(default=None, ge=1, le=720, description="Filter to last N hours"),
+):
+    """Get decision journal entries with optional filters."""
+    settings = get_settings()
+    _require_auth(settings, authorization)
+
+    if not settings.supabase_url or not settings.supabase_service_role_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="bot API storage is not configured",
+        )
+
+    journal = DecisionJournal(settings)
+
+    decisions = journal.get_recent_decisions(
+        limit=limit,
+        symbol=symbol.upper() if symbol else None,
+        action=action,
+    )
+
+    # Apply additional filters
+    if cycle_id:
+        decisions = [d for d in decisions if d.cycle_id == cycle_id]
+    if eligibility:
+        decisions = [d for d in decisions if d.eligibility == eligibility]
+    if since_hours:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+        decisions = [d for d in decisions if d.timestamp >= cutoff]
+
+    # Apply limit after filtering
+    decisions = decisions[:limit]
+
+    # Include outcomes for each decision
+    result = []
+    for d in decisions:
+        entry = {
+            "decision_id": d.decision_id,
+            "cycle_id": d.cycle_id,
+            "timestamp": d.timestamp.isoformat(),
+            "symbol": d.symbol,
+            "action": d.action,
+            "eligibility": d.eligibility,
+            "confidence_score": d.confidence_score,
+            "heuristic_score": d.heuristic_score,
+            "risk_state": d.risk_state,
+            "aggregate_state": d.aggregate_state,
+            "direction": d.direction,
+            "max_notional_usd": d.max_notional_usd,
+        }
+        if d.entry_plan_json:
+            entry["entry_plan"] = json.loads(d.entry_plan_json)
+        if d.reasons_json:
+            entry["reasons"] = json.loads(d.reasons_json)
+        if d.warnings_json:
+            entry["warnings"] = json.loads(d.warnings_json)
+        if d.sizing_details_json:
+            entry["sizing_details"] = json.loads(d.sizing_details_json)
+
+        # Fetch outcomes
+        outcomes = journal.get_outcomes_for_decision(d.decision_id)
+        if outcomes:
+            entry["outcomes"] = [
+                {
+                    "order_id": o.order_id,
+                    "filled": o.filled,
+                    "fill_price": o.fill_price,
+                    "quantity": o.quantity,
+                    "notional": o.notional,
+                    "fees_usd": o.fees_usd,
+                    "slippage_usd": o.slippage_usd,
+                    "pnl_usd": o.pnl_usd,
+                    "timestamp": o.timestamp.isoformat(),
+                }
+                for o in outcomes
+            ]
+
+        result.append(entry)
+
+    return {
+        "total": len(result),
+        "decisions": result,
+    }
+
+
+@router.get("/decisions/stats")
+def bot_decisions_stats(
+    authorization: str | None = Header(default=None),
+    since_hours: int = Query(default=168, ge=1, le=720, description="Lookback period in hours (default 7 days)"),
+):
+    """Get aggregated decision journal statistics."""
+    settings = get_settings()
+    _require_auth(settings, authorization)
+
+    if not settings.supabase_url or not settings.supabase_service_role_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="bot API storage is not configured",
+        )
+
+    journal = DecisionJournal(settings)
+    stats = journal.get_performance_stats(since_hours=since_hours)
+
+    return stats
+
+@router.get("/performance/enhanced")
+def bot_performance_enhanced(
+    authorization: str | None = Header(default=None),
+    days: int = Query(default=30, ge=1, le=365, description="Lookback period in days"),
+):
+    """Get enhanced bot performance metrics with paper trading analytics.
+
+    This endpoint provides:
+    - Paper trading metrics (expectancy, profit factor, max drawdown)
+    - Real trading PnL summary
+    - Combined overview
+    """
+    from app.evaluation.paper_performance import (
+        PaperTradeRecord,
+        calculate_paper_metrics,
+    )
+
+    settings = get_settings()
+    _require_auth(settings, authorization)
+
+    client = _supabase_client(settings)
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    # Get trades in period (both real and paper)
+    trades = client.select(
+        "trades",
+        columns="id,symbol,strategy,opened_at,closed_at,entry_price,exit_price,quantity,pnl_usd,pnl_pct,realized_pnl_usd,market_regime,metadata",
+        filters={"closed_at": f"gte.{cutoff}"},
+        order="closed_at.desc",
+    )
+
+    # Get fills in period for PAPER TRADING ONLY
+    fills = client.select(
+        "fills",
+        columns="order_id,price,quantity,fee_usd,realized_pnl_usd,filled_at,raw",
+        filters={"filled_at": f"gte.{cutoff}"},
+    )
+
+    # Filter fills to only paper trading
+    paper_fills = [f for f in fills if (f.get("raw") or {}).get("broker") == "PAPER"]
+
+    # Convert paper fills to PaperTradeRecord for performance calculation
+    # Note: We need closed trades (SELL fills that close positions)
+    # For now, we'll calculate based on fills that have realized PnL
+    paper_trade_records = []
+    for fill in paper_fills:
+        raw = fill.get("raw") or {}
+        symbol = (raw.get("symbol") or "unknown").upper()
+        side = raw.get("side") or "BUY"
+
+        # Only SELL fills represent closed trades with realized PnL
+        if side == "SELL" and float(fill.get("realized_pnl_usd") or 0) != 0:
+            paper_trade_records.append(
+                PaperTradeRecord(
+                    symbol=symbol,
+                    strategy=raw.get("strategy") or "unknown",
+                    opened_at=datetime.fromisoformat(raw.get("opened_at", fill.get("filled_at", cutoff))),
+                    closed_at=datetime.fromisoformat(fill.get("filled_at", cutoff)),
+                    entry_price=float(raw.get("entry_price") or 0),
+                    exit_price=float(fill.get("price") or 0),
+                    quantity=float(fill.get("quantity") or 0),
+                    pnl_usd=float(fill.get("realized_pnl_usd") or 0),
+                    pnl_pct=float(raw.get("pnl_pct") or 0),
+                    fees_usd=float(fill.get("fee_usd") or 0),
+                    slippage_usd=float(raw.get("slippage_usd") or 0),
+                )
+            )
+
+    # Calculate paper trading metrics
+    paper_metrics = calculate_paper_metrics(paper_trade_records) if paper_trade_records else None
+
+    # Calculate metrics for REAL TRADING (from trades)
+    real_trades = [t for t in trades if (t.get("metadata") or {}).get("broker") != "PAPER"]
+    total_real_trades = len(real_trades)
+    winning_real = sum(1 for t in real_trades if float(t.get("pnl_usd") or 0) > 0)
+    losing_real = sum(1 for t in real_trades if float(t.get("pnl_usd") or 0) < 0)
+    real_pnl = sum(float(t.get("pnl_usd") or 0) for t in real_trades)
+    real_win_rate = (winning_real / total_real_trades * 100) if total_real_trades > 0 else 0.0
+
+    # Paper trading PnL from fills
+    paper_pnl = sum(float(f.get("realized_pnl_usd") or 0) for f in paper_fills)
+    paper_fees = sum(float(f.get("fee_usd") or 0) for f in paper_fills)
+
+    # Total metrics
+    total_trades = total_real_trades + (paper_metrics.total_trades if paper_metrics else 0)
+    total_pnl = real_pnl + paper_pnl
+    total_fees = paper_fees
+
+    return {
+        "period_days": days,
+        "real_trading": {
+            "total_trades": total_real_trades,
+            "winning_trades": winning_real,
+            "losing_trades": losing_real,
+            "win_rate_pct": round(real_win_rate, 2),
+            "total_pnl_usd": round(real_pnl, 2),
+        },
+        "paper_trading": {
+            "total_trades": paper_metrics.total_trades if paper_metrics else 0,
+            "winning_trades": paper_metrics.winning_trades if paper_metrics else 0,
+            "losing_trades": paper_metrics.losing_trades if paper_metrics else 0,
+            "win_rate_pct": paper_metrics.win_rate_pct if paper_metrics else 0.0,
+            "total_pnl_usd": paper_metrics.total_pnl_usd if paper_metrics else 0.0,
+            "total_fees_usd": paper_metrics.total_fees_usd if paper_metrics else 0.0,
+            "total_slippage_usd": paper_metrics.total_slippage_usd if paper_metrics else 0.0,
+            "net_pnl_usd": paper_metrics.net_pnl_usd if paper_metrics else 0.0,
+            "profit_factor": paper_metrics.profit_factor if paper_metrics else 0.0,
+            "expectancy_usd": paper_metrics.expectancy_usd if paper_metrics else 0.0,
+            "max_drawdown_usd": paper_metrics.max_drawdown_usd if paper_metrics else 0.0,
+            "max_drawdown_pct": paper_metrics.max_drawdown_pct if paper_metrics else 0.0,
+            "avg_win_usd": paper_metrics.avg_win_usd if paper_metrics else 0.0,
+            "avg_loss_usd": paper_metrics.avg_loss_usd if paper_metrics else 0.0,
+            "avg_trade_usd": paper_metrics.avg_trade_usd if paper_metrics else 0.0,
+            "by_symbol": paper_metrics.by_symbol if paper_metrics else {},
+            "by_strategy": paper_metrics.by_strategy if paper_metrics else {},
+        },
+        "summary": {
+            "total_trades": total_trades,
+            "total_pnl_usd": round(total_pnl, 2),
+            "total_fees_usd": round(total_fees, 2),
+            "net_pnl_usd": round(total_pnl - total_fees, 2),
         },
     }

@@ -16,8 +16,8 @@ def build_agent_dashboard(
 ) -> dict[str, Any]:
     snapshot = export.to_snapshot(cash_asset=settings.portfolio_cash_asset)
     exposure = analyze_exposure(snapshot)
-    total = snapshot.total_value_usd
-    cash = snapshot.cash_value_usd
+    total = snapshot.total_value_usd()
+    cash = snapshot.cash_value_usd()
     reserve_required = total * (settings.min_cash_reserve_pct / 100.0)
     deployable = max(cash - reserve_required, 0.0)
     daily_buy_remaining = max(
@@ -53,9 +53,7 @@ def build_agent_dashboard(
                 "target_weight_pct": (
                     allocation.target_weight_pct if allocation else None
                 ),
-                "max_weight_pct": (
-                    allocation.max_weight_pct if allocation else None
-                ),
+                "max_weight_pct": (allocation.max_weight_pct if allocation else None),
                 "agent_recommendation": {
                     "state": "RESEARCH_ONLY",
                     "action": "NO_VALIDATED_AGENT_SIGNAL",
@@ -90,7 +88,7 @@ def build_agent_dashboard(
             "cash_value_usd": cash,
             "cash_weight_pct": (cash / total * 100.0) if total > 0 else 0.0,
             "capital_at_risk_usd": snapshot.capital_at_risk_usd,
-            "open_positions": snapshot.open_positions,
+            "open_positions": snapshot.open_positions(),
             "daily_buy_used_usd": snapshot.daily_buy_used_usd,
             "daily_buy_remaining_usd": daily_buy_remaining,
             "minimum_cash_reserve_usd": reserve_required,
@@ -129,7 +127,9 @@ def build_agent_dashboard(
             "multi_source_unattributed_usd": exposure.multi_source_unattributed_usd,
             "unknown_liquidity_usd": exposure.unknown_liquidity_usd,
             "wallet_reconciliation_healthy": wallet_inventory["reconciliation_healthy"],
-            "wallet_reconciliation_issue_count": wallet_inventory["reconciliation_issue_count"],
+            "wallet_reconciliation_issue_count": wallet_inventory[
+                "reconciliation_issue_count"
+            ],
             "stale_wallet_count": wallet_inventory["stale_wallet_count"],
         },
         "assets": assets,

@@ -73,7 +73,7 @@ def ranging_candidate(symbol="BTCUSDT", price=100):
     )
 
 
-def base_portfolio(*, max_btc_pct=50):
+def base_portfolio(*, max_btc_pct=50, daily_realized_pnl_usd: float | None = 0.0):
     return PortfolioSnapshot(
         positions=(
             PortfolioPosition(
@@ -84,6 +84,7 @@ def base_portfolio(*, max_btc_pct=50):
             ),
         ),
         allocations=(AllocationTarget("BTC", 10, max_btc_pct),),
+        daily_realized_pnl_usd=daily_realized_pnl_usd,
     )
 
 
@@ -94,6 +95,7 @@ def make_loop(
     broker=None,
     repository=None,
     max_btc_pct=50,
+    daily_realized_pnl_usd: float | None = 0.0,
 ):
     source = StaticCandidates([candidate])
     broker = broker or PaperBroker(initial_cash_usd=1000, fee_bps=0, slippage_bps=0)
@@ -101,7 +103,7 @@ def make_loop(
     orchestrator = PaperExecutionOrchestrator(broker, repository)
     loop = PaperTradingLoop(
         candidate_source=source,
-        portfolio_source=StaticPortfolioSource(base_portfolio(max_btc_pct=max_btc_pct)),
+        portfolio_source=StaticPortfolioSource(base_portfolio(max_btc_pct=max_btc_pct, daily_realized_pnl_usd=daily_realized_pnl_usd)),
         broker=broker,
         orchestrator=orchestrator,
         settings=settings,
